@@ -1,6 +1,14 @@
 module IKA87AD (
     input   wire            i_EMUCLK,
-    input   wire            i_MCUCLK_PCEN
+    input   wire            i_MCUCLK_PCEN,
+    input   wire            i_RESET_n,
+
+    output  wire            o_ALE
+    output  wire            o_RD_n,
+    output  wire            o_WR_n,
+
+    input   wire    [7:0]   i_PDI,
+    output  wire    [7:0]   o_PDO,
 );
 
 
@@ -16,7 +24,7 @@ module IKA87AD (
 wire            emuclk = i_EMUCLK;
 wire            mcuclk_pcen = i_MCUCLK_PCEN;
 wire            cycle_tick, bus_data_latch_tick, mc_read_tick;
-wire            mrst_n;
+wire            mrst_n = i_RESET_n;
 
 
 
@@ -28,6 +36,7 @@ localparam MCTYPE0 = 2'b00;
 localparam MCTYPE1 = 2'b01;
 
 //source 1/destination types
+localparam S1_DST_MDO = 4'b1001;
 localparam S1_DST_MA = 4'b1010;
 localparam S1_DST_PC = 4'b1011;
 localparam S1_DST_SP = 4'b1100;
@@ -44,7 +53,7 @@ localparam WR3 = 2'b11;
 
 wire    [1:0]   mc_type;
 wire    [4:0]   mc_s2;
-wire    [3:0]   mc_S1_DST;
+wire    [3:0]   mc_s1_dst;
 wire    [1:0]   mc_next_bus_acc;
 
 wire    [15:0]  reg_wrdata; //ALU output
@@ -61,7 +70,6 @@ reg     [8:0]   timing_sr_3cyc;
 reg             timing_sr_start;
 
 assign  cycle_tick = timing_sr_4cyc[11] | timing_sr_3cyc[8];
-assign  bus_data_latch_tick = timing_sr_4cyc[5] | timing_sr_3cyc[5];
 assign  mc_read_tick = timing_sr_4cyc[8] | timing_sr_4cyc[11] | timing_sr_3cyc[8];
 
 always @(posedge emuclk) begin
@@ -132,7 +140,7 @@ end
         00110: sr/sr1, OPCODE[]
         00111: sr2, OPCODE[]
         01000: sr4, OPCODE[0]
-        01001: MEM DATA(read data)
+        01001: MDI
         01010: SP_POP
         01011: SP_PUSH
         01100: ALU temp register
@@ -165,8 +173,8 @@ end
         0110: sr/sr1, OPCODE[]
         0111: sr2, OPCODE[]
         1000: sr3, OPCODE[0]
-        1001: MEM DATA(write data)
-        1010: MEM ADDR
+        1001: MDO
+        1010: MA
         1011: PC
         1100: SP
         1101: ALU temp register
@@ -217,6 +225,10 @@ end
 //////  REGISTER FILE
 ////
 
+//
+//  PC, SP, MA registers with auto increment/decrement feature
+//
+
 //address source selector
 localparam PC = 2'b00;
 localparam SP = 2'b01;
@@ -226,10 +238,10 @@ reg     [1:0]   address_source_sel; //00 = PC, 01 = SP, 10 = MA, 11 = reserved
 reg     [15:0]  memory_access_address;
 
 //declare PC, SP, MA register
-reg             reg_SP_inc_ndec,//PC, SP inc/dec flag
-wire            reg_PC_wr = mc_S1_DST == S1_DST_PC && mc_type == MCTYPE0;
-wire            reg_SP_wr = mc_S1_DST == S1_DST_SP && mc_type == MCTYPE0;
-wire            reg_MA_wr = mc_S1_DST == S1_DST_MA && mc_type == MCTYPE0;
+reg             reg_SP_inc_ndec,//SP inc/dec flag
+wire            reg_PC_wr = mc_s1_dst == S1_DST_PC && mc_type == MCTYPE0;
+wire            reg_SP_wr = mc_s1_dst == S1_DST_SP && mc_type == MCTYPE0;
+wire            reg_MA_wr = mc_s1_dst == S1_DST_MA && mc_type == MCTYPE0;
 reg     [15:0]  reg_PC, reg_SP, reg_MA;
 
 //this block defines the LOAD, INC and DEC operations of the PC/SP/MA register
@@ -275,7 +287,7 @@ always @(posedge emuclk) begin
             if(reg_PC_wr) reg_PC <= reg_wrdata;
             else begin
                 if(mc_next_bus_acc == RD4 || mc_next_bus_acc == RD3) begin //if there's a 3cyc/4cyc read access,
-                    if(!(address_source_sel == PC) || reg_MA_wr) reg_PC <= reg_PC; //but check if it's a mem acc other than a next instruction fetch
+                    if(address_source_sel != PC || reg_MA_wr) reg_PC <= reg_PC; //but check if it's a mem acc other than a next instruction fetch
                     else begin //Instruction read cycle? increase PC
                         if(reg_PC == 16'hFFFF) reg_PC <= 16'h0000;
                         else reg_PC <= reg_PC + 16'h0001;
@@ -332,19 +344,138 @@ always @(*) begin
 end
 
 
+//
+//  General purpose registers
+//
+
+
 
 
 ///////////////////////////////////////////////////////////
 //////  BUS CONTROLLER
 ////
 
-wire    [1:0]   mc_transaction_type;
-reg     [15:0]  mc_transaction_address;
+//current bus access type latch
+reg     [1:0]   current_bus_acc;
+always @(posedge emuclk) begin
+    if(!mrst_n) current_bus_acc <= RD4;
+    else begin
+        if(cycle_tick) current_bus_acc <= mc_next_bus_acc;
+    end
+end
 
 
+//multiplexed addr/data selector
+reg             addr_data_sel;
+always @(posedge emuclk) begin
+    if(!mrst_n) addr_data_sel <= 1'b0; //reset
+    else begin
+        if(mcuclk_pcen) begin
+            if(cycle_tick) addr_data_sel <= 1'b0; //reset
+            else begin
+                if(current_bus_acc != IDLE) if(timing_sr_4cyc[2] || timing_sr_3cyc[2]) addr_data_sel <= 1'b1;
+            end
+        end
+    end
+end
 
 
+//address high, multiplexed address low/byte data output
+wire    [7:0]   addr_hi_out = memory_access_address[15:8];
+wire    [7:0]   addr_lo_data_out = addr_data_sel ? mdo_byte_data : memory_access_address[7:0]
 
+wire            reg_MDO_wr = mc_s1_dst == S1_DST_MDO && mc_type == MCTYPE0;
+reg     [15:0]  reg_MDO;
+
+reg             mdo_byte_sel;
+wire    [7:0]   mdo_byte_data = mdo_byte_sel == 1'b1 ? reg_MDO[15:8] : reg_MDO[7:0];
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        reg_MDO <= 16'h0000;
+        mdo_byte_sel <= 1'b0;
+    end
+    else begin
+        if(cycle_tick) begin
+            if(reg_MDO_wr) reg_MDO <= reg_wrdata;
+
+            if(mc_end_of_instruction) mdo_byte_sel <= 1'b0;
+            else begin
+                if(mc_s2 == S2_SP_PUSH && reg_MA_wr) mdo_byte_sel <= 1'b1;
+                else begin
+                    if(mc_next_bus_acc == WR3) mdo_byte_sel <= ~mdo_byte_sel;
+                end
+            end
+        end
+    end
+end
+
+
+//OPCODE/memory data fetch
+reg     [7:0]   reg_OPCODE;
+reg     [15:0]  reg_MDI; //byte [15:8], word[15:0]
+reg     [15:0]  reg_XMDI; //for debug, byte -> {MDI, XMDI}
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        reg_MDI <= 16'h0000;
+    end
+    else begin
+        if(mcuclk_pcen) begin
+            if(current_bus_acc == RD4) begin
+                if(timing_sr_4cyc[5]) reg_OPCODE <= i_PDI; //opcode fetch
+            end
+            else if(current_bus_acc == RD3) begin
+                if(timing_sr_3cyc[5]) begin
+                    reg_MDI[15:8] <= i_PDI;
+                    reg_MDI[7:0] <= reg_MDI[15:8];
+                    reg_XMDI[15:8] <= reg_MDI[7:0];
+                    reg_XMDI[7:0] <= reg_XMDI[15:8];
+                end
+            end
+        end
+    end
+end
+
+
+//ALE, /RD, /WR
+reg             ale_out, rd_out, wr_out;
+assign o_ALE = ale_out;
+assign o_RD_n = ~rd_out;
+assign o_WR_n = ~wr_out;
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        ale_out <= 1'b0;
+        rd_out <= 1'b0;
+        wr_out <= 1'b0;
+    end
+    else begin
+        if(mcuclk_pcen) begin
+            if(cycle_tick) begin
+                if(mc_next_bus_acc != IDLE) ale_out <= 1'b1;
+            end
+            else begin
+                //ALE off
+                if(timing_sr_4cyc[1] || timing_sr_3cyc[1]) ale_out <= 1'b0;
+
+                //RD control
+                if(current_bus_acc == RD4 || current_bus_acc == RD3) begin
+                    if(timing_sr_4cyc[2] || timing_sr_3cyc[2]) rd_out <= 1'b1;
+                    else if(timing_sr_4cyc[6] || timing_sr_3cyc[6]) rd_out <= 1'b0;
+                end
+                else rd_out <= 1'b0;
+
+                //WR control
+                if(current_bus_acc == WR3) begin
+                    if(timing_sr_3cyc[2]) wr_out <= 1'b1;
+                    else if(timing_sr_3cyc[6]) wr_out <= 1'b0;
+                end
+                else wr_out <= 1'b0;
+            end
+        end
+    end
+end
 
 
 

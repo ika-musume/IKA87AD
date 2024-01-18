@@ -3,12 +3,14 @@ module IKA87AD (
     input   wire            i_MCUCLK_PCEN,
     input   wire            i_RESET_n,
 
-    output  wire            o_ALE
+    output  wire            o_ALE,
     output  wire            o_RD_n,
     output  wire            o_WR_n,
 
-    input   wire    [7:0]   i_PDI,
-    output  wire    [7:0]   o_PDO,
+    input   wire    [7:0]   i_PD_I,
+    output  wire    [7:0]   o_PD_O,
+    output  wire    [7:0]   o_PD_DIR
+
 );
 
 
@@ -23,7 +25,6 @@ module IKA87AD (
 
 wire            emuclk = i_EMUCLK;
 wire            mcuclk_pcen = i_MCUCLK_PCEN;
-wire            cycle_tick, bus_data_latch_tick, mc_read_tick;
 wire            mrst_n = i_RESET_n;
 
 
@@ -32,18 +33,9 @@ wire            mrst_n = i_RESET_n;
 //////  MICROCODE OUTPUT SIGNALS
 ////
 
-localparam MCTYPE0 = 2'b00;
-localparam MCTYPE1 = 2'b01;
 
-//source 1/destination types
-localparam S1_DST_MDO = 4'b1001;
-localparam S1_DST_MA = 4'b1010;
-localparam S1_DST_PC = 4'b1011;
-localparam S1_DST_SP = 4'b1100;
 
-//source 2 types
-localparam S2_SP_POP = 5'b01010;
-localparam S2_SP_PUSH = 5'b01011;
+
 
 //bus cycle types
 localparam IDLE = 2'b00;
@@ -51,13 +43,38 @@ localparam RD4 = 2'b01;
 localparam RD3 = 2'b10;
 localparam WR3 = 2'b11;
 
+//microcode types
+localparam MCTYPE0 = 2'b00;
+localparam MCTYPE1 = 2'b01;
 wire    [1:0]   mc_type;
+wire            mc_end_of_instruction = mc_next_bus_acc == RD4;
+
+//microcode type 0 fields
+//source 1/destination types
+localparam S1_DST_MD = 4'b1001;
+localparam S1_DST_MA = 4'b1010;
+localparam S1_DST_PC = 4'b1011;
+localparam S1_DST_SP = 4'b1100;
+//source 2 types
+localparam S2_SP_POP = 5'b01010;
+localparam S2_SP_PUSH = 5'b01011;
 wire    [4:0]   mc_s2;
 wire    [3:0]   mc_s1_dst;
 wire    [1:0]   mc_next_bus_acc;
 
-wire    [15:0]  reg_wrdata; //ALU output
+//microcode type 2 fields
+wire    [10:0]  mc_bookkeeping;
 
+
+wire    [15:0]  alu_wrdata; //ALU output
+wire    [15:0]  alu_ma_wrdata; //ALU output for the memory address register
+
+
+///////////////////////////////////////////////////////////
+//////  REGISTERS
+////
+
+reg     [15:0]  reg_PC, reg_SP, reg_MA;
 
 
 
@@ -65,38 +82,49 @@ wire    [15:0]  reg_wrdata; //ALU output
 //////  TIMING GENERATOR
 ////
 
-reg     [11:0]  timing_sr_4cyc;
-reg     [8:0]   timing_sr_3cyc;
-reg             timing_sr_start;
+reg     [11:0]  timing_sr;
+reg     [1:0]   current_bus_acc;
 
-assign  cycle_tick = timing_sr_4cyc[11] | timing_sr_3cyc[8];
-assign  mc_read_tick = timing_sr_4cyc[8] | timing_sr_4cyc[11] | timing_sr_3cyc[8];
+wire    opcode_tick = timing_sr[11] & current_bus_acc == RD4;
+wire    rw_tick = timing_sr[8] & current_bus_acc != RD4;
+wire    cycle_tick = opcode_tick | rw_tick;
+
+wire    mc_read_tick = timing_sr[8] | timing_sr[11];
+
+wire    opcode_inlatch_tick = timing_sr[6] & current_bus_acc == RD4;
+wire    md_inlatch_tick = timing_sr[6] & current_bus_acc == RD3;
+wire    full_opcode_inlatch_tick_debug = timing_sr[6] & (current_bus_acc == RD4 | current_bus_acc == RD3);
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        timing_sr_4cyc <= 12'h0;
-        timing_sr_3cyc <= 9'h0;
-        timing_sr_start <= 1'h1;
+        timing_sr <= 12'b000_000_000_001;
+        current_bus_acc <= RD4;
     end
     else begin
         if(mcuclk_pcen) begin
-            if(mc_next_bus_acc == RD4) begin //OPCODE fetch cycle
-                //4cyc timing bit entrance
-                timing_sr_4cyc[0] <= timing_sr_4cyc[11] | timing_sr_3cyc[8] | timing_sr_start;
-                timing_sr_4cyc[11:1] <= timing_sr_4cyc[10:0];
-
-                //3cyc timing bit entrance
-                timing_sr_3cyc[0] <= 1'b0;
-                timing_sr_3cyc[8:1] <= timing_sr_3cyc[7:0];
+            if(current_bus_acc == RD4) begin
+                if(timing_sr[11]) begin
+                    current_bus_acc <= mc_next_bus_acc;
+                    timing_sr[0] <= timing_sr[11];
+                    timing_sr[11:1] <= timing_sr[10:0];
+                end
+                else begin
+                    timing_sr[0] <= timing_sr[11];
+                    timing_sr[11:1] <= timing_sr[10:0];
+                end
             end
             else begin
-                //4cyc timing bit entrance
-                timing_sr_4cyc[0] <= 1'b0;
-                timing_sr_4cyc[11:1] <= timing_sr_4cyc[10:0];
-
-                //3cyc timing bit entrance
-                timing_sr_3cyc[0] <= timing_sr_4cyc[11] | timing_sr_3cyc[8];
-                timing_sr_3cyc[8:1] <= timing_sr_3cyc[7:0];
+                if(timing_sr[8]) begin
+                    current_bus_acc <= mc_next_bus_acc;
+                    timing_sr[0] <= timing_sr[8];
+                    timing_sr[8:1] <= timing_sr[7:0];
+                    timing_sr[9] <= 1'b0;
+                    timing_sr[11:10] <= timing_sr[10:9];
+                end
+                else begin
+                    timing_sr[0] <= timing_sr[8];
+                    timing_sr[11:1] <= timing_sr[10:0];
+                end
             end
         end
     end
@@ -104,6 +132,12 @@ end
 
 
 
+///////////////////////////////////////////////////////////
+//////  OPCODE DECODER
+////
+
+reg     [7:0]   reg_OPCODE;
+reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
 
 
 
@@ -117,20 +151,16 @@ end
 //////  MICROCODE ROM
 ////
 
-
-
 /*
     MICROCODE TYPE DESCRIPTION
 
-    1. DOUBLE-OPERAND ALU
+    1. ALU-REGISTER 1
     00_X_X_X_XXXXX_XXXX_XX_XX
 
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13]: EOI(end of instruction) marker
-
-    D[12:8] source2, 
+    D[13:9] source2
         00000: r, OPCODE[]         
         00001: r2, OPCODE[]
         00010: r1, OPCODE[]
@@ -140,47 +170,62 @@ end
         00110: sr/sr1, OPCODE[]
         00111: sr2, OPCODE[]
         01000: sr4, OPCODE[0]
-        01001: MDI
-        01010: SP_POP
+        01001: MD
+        01010: SP_POP 
         01011: SP_PUSH
-        01100: ALU temp register
-        01101: BC(CALB)
-        01110:
-        01111:
-        10000: word
-        10001: {V, wa}
-        10010: 00001_11bit
-        10011: 00000000_10_ta_0
-        10100: jdisp1
-        10101: jdisp
-        10110: -3
-        10111: -2
-        11000: -1
-        11001: 1
-        11010: 2
-        11011: 3
-        11100: *interrupt address
-        11101: *address from reg pair(BC, DE, HL), rpa1: OPCODE[1:0], rpa: OPCODE[2], OPCODE[0], rpa2: OPCODE[3:2]
-        11110: *rpa addend select
-        11111: *rpa3 addend select
-    D[7:4] source1, destination register type, decoded by the external circuit:
-        0000: r, OPCODE[]         
-        0001: r2, OPCODE[]
-        0010: r1, OPCODE[]
-        0011: rp2, OPCODE[]
-        0100: rp, OPCODE[]
-        0101: rp1, OPCODE[]
-        0110: sr/sr1, OPCODE[]
-        0111: sr2, OPCODE[]
-        1000: sr3, OPCODE[0]
-        1001: MDO
-        1010: MA
-        1011: PC
-        1100: SP
-        1101: ALU temp register
-        1110: 
-        1111: *address from reg pair(BC, DE, HL), rpa1: OPCODE[1:0], rpa: OPCODE[2], OPCODE[0], rpa2: OPCODE[3:2]
-
+        01100: A 
+        01101: EA
+        01110: BC(CALB)  
+        01111: DE+(BLOCK)
+        10000: HL+(BLOCK)
+        10001: ADDR_V_WA 
+        10010: ADDR_IM    
+        10011: ADDR_DIR  
+        10100: ADDR_REL_S
+        10101: ADDR_REL_L
+        10110: -2
+        10111: -1
+        11000: 1
+        11001: 2
+        11010: ALU temp register
+        11011: *ADDR_INT, interrupt address
+        11100: *ADDR_RPA_SINGLE, +, --
+        11101: *ADDR_RPA_DOUBLE, ++, --
+        11110: *ADDR_RPA_BASE
+        11111: *ADDR_RPA_OFFSET, rpa/rpa3 addend select
+    D[8:3] source1, destination register type, decoded by the external circuit:
+        00000: r, OPCODE[]         
+        00001: r2, OPCODE[]
+        00010: r1, OPCODE[]
+        00011: rp2, OPCODE[]
+        00100: rp, OPCODE[]
+        00101: rp1, OPCODE[]
+        00110: sr/sr1, OPCODE[]
+        00111: sr2, OPCODE[]
+        01000: sr3, OPCODE[0]
+        01001: MD
+        01010: MA
+        01011: PC
+        01100: SP
+        01101: A
+        01110: EA
+        01111: C
+        10000:
+        10001:
+        10010:
+        10011:
+        10100:
+        10101:
+        10110:
+        10111:
+        11000:
+        11001:
+        11010:
+        11011:
+        11100:
+        11101: *ADDR_RPA_SINGLE, +, --     
+        11110: *ADDR_RPA_DOUBLE, ++, --
+        11111: *ADDR_RPA_OFFSET      
     D[3:2] ALU operation type:
         00: bypass(source2 -> source1)
         01: add
@@ -195,28 +240,140 @@ end
     *automatically decoded by external logic
 
 
-    2. SINGLE-OPERAND ALU
+    2. ALU-REGISTER 2
     01_X_X_X_X_X
 
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13]: EOI(end of instruction) marker
+    D[13:10] source2
+    0000:
+    0001:
+    0010:
+    0011:
+    0100:
+    0101:
+    0110:
+    0111:
+    1000:
+    1001:
+    1010:
+    1011:
+    1100:
+    1101:
+    1110:
+    1111:
+    D[9:6] source1
+    0000:
+    0001:
+    0010:
+    0011:
+    0100:
+    0101:
+    0110:
+    0111:
+    1000:
+    1001:
+    1010:
+    1011:
+    1100:
+    1101:
+    1110:
+    1111:
+    D[5:2] ALU operation type:
+    0000: NEGA(negate)
+    0001: DAA(what the fuck is that)
+    0010: RLD(rotate left digit)
+    0011: RRD(rotate right digit)
+    0100: RLL
+    0101: RLR
+    0110: SLLC
+    0111: SLRC
+    1000: DRLL
+    1001: DRLR
+    1010: DSLL
+    1011: SDLR
+    1100: MUL
+    1101: DIV
+    1110:
+    1111:
+    D[1:0] current bus transaction type :
+        00: IDLE
+        01: 3-state read
+        10: 3-state write
+        11: 4-state read
 
 
-    3. BOOKKEEPING
-    10_X_X_X_X_X
+    3. SPECIAL OPERATION
+    10_X_X_X_X_X_X_X_X_?_?_?_XXX_XX
 
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13]: EOI(end of instruction) marker
-    D[12]: record interrupt status(1=enabled, 0=disabled)
-    D[11]: IACK
-    D[10]: set address output as stack pointer
-    D[9]: address output decrease mode
+    D[13]: EI/DIO(1=enabled, 0=disabled)
+    D[12]: CARRY
+    D[11]: EXX
+    D[10]: EXA
+    D[9]: EXH
+    D[8]: BIT
+    D[7]: 
+    D[6]: 
+    D[5]: 
+    D[4:2]: CPU control
+        000: SK
+        001: SKN
+        010: SKIT
+        011: SKNIT
+        100: HLT
+        101: STOP
+        110: 
+        111:
+    D[1:0] current bus transaction type :
+        00: IDLE
+        01: 3-state read
+        10: 3-state write
+        11: 4-state read
 
+    4. CONDITIONAL OPERATION
+    11_X_X_X_XXXX_X_X_X_X_X_X_X_XX
+    D[17:16]: instruction type bit
+    D[15]: FLAG bit
+    D[14]: SKIP bit
+    D[13]: nop
+    D[12:9]: nop cycles 0=>1cycle, 15=16cycles
+    D[8]: conditional PC write(BLOCK)
+    D[7]: conditional read(rpa)
+    D[6]: swap MD input order
+
+    D[1:0] current bus transaction type :
+        00: IDLE
+        01: 3-state read
+        10: 3-state write
+        11: 4-state read
 */
+
+
+///////////////////////////////////////////////////////////
+//////  MICROCODE OUTPUT DECODER
+////
+
+
+wire            reg_PC_wr = mc_type == MCTYPE0 && mc_s1_dst == S1_DST_PC;
+wire            reg_SP_wr = mc_type == MCTYPE0 && mc_s1_dst == S1_DST_SP;
+wire            reg_MA_wr = mc_type == MCTYPE0 && mc_s1_dst == S1_DST_MA;
+wire            reg_MA_swap_input_order = mc_type == MCTYPE2 && mc_bookkeeping[4];
+wire            
+
+wire            reg_SP_pop = mc_type == MCTYPE0 && mc_s2 == S2_SP_POP;
+wire            reg_SP_push = mc_type == MCTYPE0 && mc_s2 == S2_SP_PUSH;
+
+
+
+///////////////////////////////////////////////////////////
+//////  ALU
+////
+
+
 
 
 
@@ -237,25 +394,21 @@ localparam MA_RESERVED = 2'b11;
 reg     [1:0]   address_source_sel; //00 = PC, 01 = SP, 10 = MA, 11 = reserved
 reg     [15:0]  memory_access_address;
 
-//declare PC, SP, MA register
-reg             reg_SP_inc_ndec,//SP inc/dec flag
-wire            reg_PC_wr = mc_s1_dst == S1_DST_PC && mc_type == MCTYPE0;
-wire            reg_SP_wr = mc_s1_dst == S1_DST_SP && mc_type == MCTYPE0;
-wire            reg_MA_wr = mc_s1_dst == S1_DST_MA && mc_type == MCTYPE0;
-reg     [15:0]  reg_PC, reg_SP, reg_MA;
+//SP auto inc/dec flag
+reg             reg_SP_inc_ndec; //SP inc/dec flag
 
 //this block defines the LOAD, INC and DEC operations of the PC/SP/MA register
 always @(posedge emuclk) begin
     //ADDRESS OUTPUT SOURCE SELECT
     if(!mrst_n) begin
-        address_source_sel <= 2'b00;
+        address_source_sel <= PC;
     end
     else begin
         if(cycle_tick) begin
-            if(mc_end_of_instruction) address_source_sel <= 2'b00;
+            if(mc_end_of_instruction) address_source_sel <= PC;
             else begin
-                if(reg_PC_wr) address_source_sel <= 2'b00; //select PC
-                else if((mc_s2 == S2_SP_POP || mc_s2 == S2_SP_PUSH) && reg_MA_wr) address_source_sel <= 2'b01; //select SP
+                if(reg_PC_wr) address_source_sel <= PC; //select PC
+                else if((reg_SP_pop || reg_SP_push) && reg_MA_wr) address_source_sel <= 2'b01; //select SP
                 else if(reg_MA_wr) address_source_sel <= 2'b10; //select MA
                 else address_source_sel <= address_source_sel;
             end
@@ -270,7 +423,7 @@ always @(posedge emuclk) begin
         if(cycle_tick) begin
             if(mc_end_of_instruction) reg_SP_inc_ndec <= 1'b1;
             else begin
-                if(mc_s2 == S2_SP_PUSH && reg_MA_wr) reg_SP_inc_ndec <= 1'b0; //sub 1 from SP -> set SP auto decrement mode
+                if(reg_SP_push && reg_MA_wr) reg_SP_inc_ndec <= 1'b0; //sub 1 from SP -> set SP auto decrement mode
             end
         end
     end
@@ -284,31 +437,26 @@ always @(posedge emuclk) begin
     else begin
         if(cycle_tick) begin
             //Program Counter load/auto increment conditions
-            if(reg_PC_wr) reg_PC <= reg_wrdata;
+            if(reg_PC_wr) reg_PC <= alu_wrdata;
             else begin
                 if(mc_next_bus_acc == RD4 || mc_next_bus_acc == RD3) begin //if there's a 3cyc/4cyc read access,
-                    if(address_source_sel != PC || reg_MA_wr) reg_PC <= reg_PC; //but check if it's a mem acc other than a next instruction fetch
+                    if(address_source_sel != PC || reg_MA_wr) begin //but check if it's a mem acc other than a next instruction fetch
+                        reg_PC <= reg_PC;
+                    end
                     else begin //Instruction read cycle? increase PC
-                        if(reg_PC == 16'hFFFF) reg_PC <= 16'h0000;
-                        else reg_PC <= reg_PC + 16'h0001;
+                        reg_PC <= reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
                     end
                 end
                 else reg_PC <= reg_PC;
             end
 
             //Stack Pointer load/auto inc/dec conditions
-            if(reg_SP_wr) reg_SP <= reg_wrdata;
+            if(reg_SP_wr) reg_SP <= alu_wrdata;
             else begin
                 if(mc_next_bus_acc == RD3 || mc_next_bus_acc == WR3) begin //if there's a 3cyc read/write access,
                     if(address_source_sel == SP) begin //but check if it's a mem acc using the SP value
-                        if(reg_SP_inc_ndec) begin
-                            if(reg_SP == 16'hFFFF) reg_SP <= 16'h0000;
-                            else reg_SP <= reg_SP + 16'h0001;
-                        end
-                        else begin
-                            if(reg_SP == 16'h0000) reg_SP <= 16'hFFFF;
-                            else reg_SP <= reg_SP - 16'h0001;
-                        end
+                        if(reg_SP_inc_ndec) reg_SP <= reg_SP == 16'hFFFF ? 16'h0000 : reg_SP + 16'h0001;
+                        else reg_SP <= reg_SP == 16'h0000 ? 16'hFFFF : reg_SP - 16'h0001;
                     end
                     else reg_SP <= reg_SP;
                 end
@@ -316,15 +464,12 @@ always @(posedge emuclk) begin
             end
 
             //Memory Address load/auto inc conditions
-            if(reg_MA_wr) reg_MA <= reg_wrdata;
+            if(reg_MA_wr) reg_MA <= alu_ma_wrdata;
             else begin
-                if(mc_end_of_instruction) reg_MA <= 16'h0000;
+                if(opcode_tick) reg_MA <= reg_PC; ///4사이클 읽기 끝나면 새 PC로 MA업데이트하는 코드 작성하기
                 else begin
                     if(mc_next_bus_acc == RD3 || mc_next_bus_acc == WR3) begin //if there's a 3cyc read/write access,
-                        if(address_source_sel == MA) begin
-                            if(reg_MA == 16'hFFFF) reg_MA <= 16'h0000;
-                            else reg_MA <= reg_MA + 16'h0001;
-                        end
+                        if(address_source_sel == MA) reg_MA <= reg_MA == 16'hFFFF ? 16'h0000 : reg_MA + 16'h0001;
                         else reg_MA <= reg_MA;
                     end
                     else reg_MA <= reg_MA;
@@ -339,7 +484,7 @@ always @(*) begin
         PC: memory_access_address = reg_PC;
         SP: memory_access_address = reg_SP;
         MA: memory_access_address = reg_MA;
-        MA_RESERVED: memory_access_address = 16'hFFFF;
+        RPA2: memory_access_address = 16'hFFFF;
     endcase
 end
 
@@ -348,22 +493,12 @@ end
 //  General purpose registers
 //
 
-
+reg_SP <= reg_SP == 16'hFFFF ? 16'h0000 : reg_SP + 16'h0001;
 
 
 ///////////////////////////////////////////////////////////
 //////  BUS CONTROLLER
 ////
-
-//current bus access type latch
-reg     [1:0]   current_bus_acc;
-always @(posedge emuclk) begin
-    if(!mrst_n) current_bus_acc <= RD4;
-    else begin
-        if(cycle_tick) current_bus_acc <= mc_next_bus_acc;
-    end
-end
-
 
 //multiplexed addr/data selector
 reg             addr_data_sel;
@@ -373,7 +508,71 @@ always @(posedge emuclk) begin
         if(mcuclk_pcen) begin
             if(cycle_tick) addr_data_sel <= 1'b0; //reset
             else begin
-                if(current_bus_acc != IDLE) if(timing_sr_4cyc[2] || timing_sr_3cyc[2]) addr_data_sel <= 1'b1;
+                if(current_bus_acc != IDLE) if(timing_sr[2]) addr_data_sel <= 1'b1;
+            end
+        end
+    end
+end
+
+
+//memory data byte hi/lo sel
+reg             md_out_byte_sel, md_in_byte_sel;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        md_out_byte_sel <= 1'b0;
+        md_in_byte_sel <= 1'b0;
+    end
+    else begin
+        if(cycle_tick) begin
+            if(mc_end_of_instruction) begin
+                md_out_byte_sel <= 1'b0;
+                md_in_byte_sel <= 1'b0;
+            end
+            else begin
+                //swap output data order(to HI->LO) when the current instruction is PUSH
+                if(reg_SP_push && reg_MA_wr) md_out_byte_sel <= 1'b1;
+                else begin
+                    if(current_bus_acc == WR3) md_out_byte_sel <= ~md_out_byte_sel;
+                end
+
+                //swap input data order(to HI->LO) when the bookkeeping bit is hot, this is for WA, BYTE instruction
+                if(reg_MA_swap_input_order) md_in_byte_sel <= 1'b1;
+                else begin
+                    if(current_bus_acc == RD3) md_in_byte_sel <= ~md_in_byte_sel;
+                end
+            end
+        end
+    end
+end
+
+
+//OPCODE/memory data IO
+wire            reg_MD_wr = (mc_s1_dst == S1_DST_MD && mc_type == MCTYPE0);
+reg     [15:0]  reg_MD; //byte [15:8], word[15:0]
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        reg_MD <= 16'h0000;
+        reg_OPCODE <= 8'h00;
+    end
+    else begin
+        if(mcuclk_pcen) begin
+            //Memory Data register load
+            if(cycle_tick) if(reg_MD_wr) reg_MD <= alu_wrdata;
+            else if(md_inlatch_tick) begin
+                if(md_in_byte_sel) reg_MD[15:8] <= i_PD_I;
+                else reg_MD[7:0] <= i_PD_I;
+            end
+
+            //Opcode register load
+            if(opcode_inlatch_tick) reg_OPCODE <= i_PD_I;
+        
+            //Full opcode register for the disassembler
+            if(full_opcode_inlatch_tick_debug) begin
+                reg_FULL_OPCODE_debug[0] <= i_PD_I;
+                reg_FULL_OPCODE_debug[1] <= reg_FULL_OPCODE_debug[0];
+                reg_FULL_OPCODE_debug[2] <= reg_FULL_OPCODE_debug[1];
+                reg_FULL_OPCODE_debug[3] <= reg_FULL_OPCODE_debug[2];
             end
         end
     end
@@ -381,61 +580,9 @@ end
 
 
 //address high, multiplexed address low/byte data output
+wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MD[15:8] : reg_MD[7:0];
 wire    [7:0]   addr_hi_out = memory_access_address[15:8];
-wire    [7:0]   addr_lo_data_out = addr_data_sel ? mdo_byte_data : memory_access_address[7:0]
-
-wire            reg_MDO_wr = mc_s1_dst == S1_DST_MDO && mc_type == MCTYPE0;
-reg     [15:0]  reg_MDO;
-
-reg             mdo_byte_sel;
-wire    [7:0]   mdo_byte_data = mdo_byte_sel == 1'b1 ? reg_MDO[15:8] : reg_MDO[7:0];
-
-always @(posedge emuclk) begin
-    if(!mrst_n) begin
-        reg_MDO <= 16'h0000;
-        mdo_byte_sel <= 1'b0;
-    end
-    else begin
-        if(cycle_tick) begin
-            if(reg_MDO_wr) reg_MDO <= reg_wrdata;
-
-            if(mc_end_of_instruction) mdo_byte_sel <= 1'b0;
-            else begin
-                if(mc_s2 == S2_SP_PUSH && reg_MA_wr) mdo_byte_sel <= 1'b1;
-                else begin
-                    if(mc_next_bus_acc == WR3) mdo_byte_sel <= ~mdo_byte_sel;
-                end
-            end
-        end
-    end
-end
-
-
-//OPCODE/memory data fetch
-reg     [7:0]   reg_OPCODE;
-reg     [15:0]  reg_MDI; //byte [15:8], word[15:0]
-reg     [15:0]  reg_XMDI; //for debug, byte -> {MDI, XMDI}
-
-always @(posedge emuclk) begin
-    if(!mrst_n) begin
-        reg_MDI <= 16'h0000;
-    end
-    else begin
-        if(mcuclk_pcen) begin
-            if(current_bus_acc == RD4) begin
-                if(timing_sr_4cyc[5]) reg_OPCODE <= i_PDI; //opcode fetch
-            end
-            else if(current_bus_acc == RD3) begin
-                if(timing_sr_3cyc[5]) begin
-                    reg_MDI[15:8] <= i_PDI;
-                    reg_MDI[7:0] <= reg_MDI[15:8];
-                    reg_XMDI[15:8] <= reg_MDI[7:0];
-                    reg_XMDI[7:0] <= reg_XMDI[15:8];
-                end
-            end
-        end
-    end
-end
+wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
 
 
 //ALE, /RD, /WR
@@ -457,19 +604,23 @@ always @(posedge emuclk) begin
             end
             else begin
                 //ALE off
-                if(timing_sr_4cyc[1] || timing_sr_3cyc[1]) ale_out <= 1'b0;
+                if(timing_sr[1]) ale_out <= 1'b0;
 
                 //RD control
-                if(current_bus_acc == RD4 || current_bus_acc == RD3) begin
-                    if(timing_sr_4cyc[2] || timing_sr_3cyc[2]) rd_out <= 1'b1;
-                    else if(timing_sr_4cyc[6] || timing_sr_3cyc[6]) rd_out <= 1'b0;
+                if(current_bus_acc == RD4) begin
+                    if(timing_sr[2]) rd_out <= 1'b1;
+                    else if(timing_sr[8]) rd_out <= 1'b0;
+                end
+                else if(current_bus_acc == RD3) begin
+                    if(timing_sr[2]) rd_out <= 1'b1;
+                    else if(timing_sr[6]) rd_out <= 1'b0;
                 end
                 else rd_out <= 1'b0;
 
                 //WR control
                 if(current_bus_acc == WR3) begin
-                    if(timing_sr_3cyc[2]) wr_out <= 1'b1;
-                    else if(timing_sr_3cyc[6]) wr_out <= 1'b0;
+                    if(timing_sr[2]) wr_out <= 1'b1;
+                    else if(timing_sr[6]) wr_out <= 1'b0;
                 end
                 else wr_out <= 1'b0;
             end

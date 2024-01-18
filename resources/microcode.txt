@@ -1,0 +1,290 @@
+mov r1, A
+(1)cycle4
+1.r1<-A, RD4
+
+mov A, r1
+(1)cycle4
+1.A<-r1, RD4
+
+mov sr, A
+(3)cycle433
+1.nop, RD3
+2.nop, IDLE
+3.sr<-A, RD4
+
+mov A, sr1
+(3)cycle433
+1.nop, RD3
+2.nop, IDLE
+3.A<-sr1, RD4
+
+mov r, word
+(4)cycle44333
+1.nop, RD3
+2.nop, RD3
+3.MA<-MD, RD3
+4.r<-MD, RD4
+
+mov word, r
+(4)cycle44333
+1.nop, RD3
+2.MD<-r, RD3
+3.MA<-MD, WR3
+4.nop, RD4
+
+mvi r, byte
+(2)cycle43
+1.nop, RD3
+2.r<-MD, RD4
+
+mvi sr2, byte
+(3)cycle4433
+1.nop, RD3
+2.nop, IDLE
+3.sr2<-MD, RD4
+
+mviw wa, byte ?????????????????????
+(4)cycle4333
+1.BK_swap MA input order, RD3
+2.nop, RD3
+3.MA<-Vwa, WR3
+4.nop, RD4
+
+mvix rpa1, byte
+(3)cycle433
+1.nop, RD3
+2.MA<-ADDR_RPA_SINGLE, WR3
+3.nop, RD4
+
+staw wa
+(3)cycle433
+1.MD<-A, RD3
+2.MA<-Vwa, WR3
+3.nop, RD4
+
+ldaw wa
+(3)cycle433
+1.nop, RD3
+2.MA<-Vwa, RD3
+3.A<-MD, RD4
+
+stax rpa2
+(2)cycle43
+1.MA<-ADDR_RPA_SINGLE, WR3
+2.nop, RD4
+
+(4)cycle4333
+1.BK_conditional read, RD3/IDLE
+2.MA<-ADDR_RPA_BASE, IDLE
+3.MA<-MA+ADDR_RPA_OFFSET, WR3
+4.nop, RD4
+
+ldax rpa2
+(2)cycle43
+1.MA<-ADDR_RPA_SINGLE, RD3
+2.A<-MD, RD4
+
+(4)cycle4333
+1.BK_conditional read, RD3/IDLE
+2.MA<-ADDR_RPA_BASE, IDLE
+3.MA<-MA+ADDR_RPA_OFFSET, RD3
+4.A<-MD, RD4
+
+exx
+(1)cycle4
+1.BK_exx
+
+exa
+(1)cycle4
+1.BK_exa
+
+exh
+(1)cycle4
+1.BK_exh
+
+block
+(4)cycle4333
+1.MA<-HL+, RD
+2.MA<-DE+, WR
+3.C<-C-1, IDLE
+4.BK_conditional PC write, RD4
+
+dmov rp3, ea
+(1)cycle4
+1.rp3<-EA
+
+dmov ea, rp3
+(1)cycle4
+1.EA<-rp3
+
+dmov sr3, ea
+(3)cycle4433
+1.sr3<-EA
+2.nop, IDLE
+3.nop, RD4
+
+dmov ea, sr4
+(3)cycle4433
+1.EA<-sr4
+2.nop, IDLE
+3.nop, RD4
+
+sbcd word (rp in opcode)
+(5)cycle443333
+1.MD, RD3
+2.MD<-rp, RD3
+3.MA<-MD, WR3
+4.nop, WR3
+5.nop, RD4
+
+sded word (rp in opcode)
+(5)cycle443333
+1.MD, RD3
+2.MD<-rp, RD3
+3.MA<-MD, WR3
+4.nop, WR3
+5.nop, RD4
+
+shld word (rp in opcode)
+(5)cycle443333
+1.MD, RD3
+2.MD<-rp, RD3
+3.MA<-MD, WR3
+4.nop, WR3
+5.nop, RD4
+
+sspd word (rp in opcode)
+(5)cycle443333
+1.MD, RD3
+2.MD<-rp, RD3
+3.MA<-MD, WR3
+4.nop, WR3
+5.nop, RD4
+
+steax rpa3
+(3)cycle4433
+1.MA<-ADDR_RPA_DOUBLE, WR3
+2.nop, WR3
+3.nop, RD4
+
+(5)cycle443333
+1.BK_conditional read, RD3/IDLE
+2.MA<-ADDR_RPA_BASE, IDLE
+3.MA<-MA+ADDR_RPA_OFFSET, WR3
+4.nop, WR3
+5.nop, RD4
+
+lbcd word (rp in opcode)
+(5)cycle443333
+1.nop, RD3
+2.nop, RD3
+3.MA<-MD, RD3
+4.nop, RD3
+5.rp<-MD, RD4
+
+lded word (rp in opcode)
+(5)cycle443333
+1.nop, RD3
+2.nop, RD3
+3.MA<-MD, RD3
+4.nop, RD3
+5.rp<-MD, RD4
+
+lhld word (rp in opcode)
+(5)cycle443333
+1.nop, RD3
+2.nop, RD3
+3.MA<-MD, RD3
+4.nop, RD3
+5.rp<-MD, RD4
+
+lspd word (rp in opcode)
+(5)cycle443333
+1.nop, RD3
+2.nop, RD3
+3.MA<-MD, RD3
+4.nop, RD3
+5.rp<-MD, RD4
+
+ldeax rpa3
+(3)cycle4433
+1.MA<-ADDR_RPA_DOUBLE, RD3
+2.nop, RD3
+3.EA<-MD, RD4
+
+(5)cycle443333
+1.BK_conditional read, RD3/IDLE
+2.MA<-ADDR_RPA_BASE, IDLE
+3.MA<-MA+ADDR_RPA_OFFSET, RD3
+4.nop, RD3
+5.EA<-MD, RD4
+
+push
+(4)cycle4333
+1.MA<-SP_PUSH, IDLE
+2.MD<-rp1, WR3
+3.nop, WR3
+4.nop, RD4
+
+pop
+(3)cycle433
+1.MA<-SP_POP, RD3
+2.nop, RD3
+3.rp1<-MD, RD4
+
+lxi
+(3)cycle433
+1.nop, RD3
+2.nop, RD3
+3.rp2<-MD
+
+table
+(4)cycle44333
+1.MA<-MA+2, IDLE
+2.nop, RD3
+3.nop, RD3
+4.BC<-MD
+
+add, adc, addnc, sub, sbb, subnb, ana, ora, xra, gta, lta, nea, eqa, ona offa -> 15 operations
+(1)cycle44
+1.A<-A(operation)r, RD4
+
+(1)cycle44
+1.r<-r(operation)A, RD4
+
+addx, adcx, addncx, subx, sbbx, subncx, anax, orax, xrax, gtax, ltax, neax, eqax, onax, offax -> 15 operations
+(2)cycle443
+1.MA<-ADDR_RPA_SINGLE, RD3
+2.A<-A(operation)MD, RD4
+
+adi, aci, adinc, sui, sbi, suinb, ani, ori, xri, gti, lti, nei, eqi, oni, offi -> 15 operations
+(2)cycle43
+1.nop, RD3
+2.A<-A(operation)MD, RD4
+
+(2)cycle443
+1.nop, RD3
+2.r<-r(operation)MD, RD4
+
+
+?????????????????????/
+(5 or 3)cycle443333 or 4433
+1.AL<-sr2, RD3
+2.ALU temp<-ALU temp(operation)MD, IDLE
+3.conditional branch, if ALU instruction is comparision, ends here with RD4
+4.sr2<-ALU temp
+5.nop, RD4
+
+
+
+mul
+(3)cycle44_3333_3333
+1.ALU temp<-mul, IDLE
+2.nop, 6 cycles, IDLE
+3.EA<-ALU temp, RD4
+
+div
+(3)cycle44_3333_3333_3333_3333_3
+1.ALU temp<-div, IDLE
+2.nop, 15 cycles, IDLE
+3.r2<-ALU temp, RD4

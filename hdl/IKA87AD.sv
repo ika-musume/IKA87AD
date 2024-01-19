@@ -161,56 +161,56 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13:9] source2
-        00000: r, OPCODE[]         
-        00001: r2, OPCODE[]
-        00010: r1, OPCODE[]
-        00011: rp2, OPCODE[]
-        00100: rp, OPCODE[]
-        00101: rp1, OPCODE[]
-        00110: sr/sr1, OPCODE[]
-        00111: sr2, OPCODE[]
-        01000: sr4, OPCODE[0]
-        01001: MD
-        01010: SP_POP 
-        01011: SP_PUSH
-        01100: A 
-        01101: EA
-        01110: BC(CALB)  
-        01111: DE+(BLOCK)
-        10000: HL+(BLOCK)
-        10001: ADDR_V_WA 
-        10010: ADDR_IM    
-        10011: ADDR_DIR  
-        10100: ADDR_REL_S
-        10101: ADDR_REL_L
-        10110: -2
-        10111: -1
-        11000: 1
-        11001: 2
-        11010: ALU temp register
-        11011: *ADDR_INT, interrupt address
-        11100: *ADDR_RPA_SINGLE, +, --
-        11101: *ADDR_RPA_DOUBLE, ++, --
-        11110: *ADDR_RPA_BASE
-        11111: *ADDR_RPA_OFFSET, rpa/rpa3 addend select
-    D[8:3] source1, destination register type, decoded by the external circuit:
-        00000: r, OPCODE[]         
-        00001: r2, OPCODE[]
-        00010: r1, OPCODE[]
-        00011: rp2, OPCODE[]
-        00100: rp, OPCODE[]
-        00101: rp1, OPCODE[]
-        00110: sr/sr1, OPCODE[]
-        00111: sr2, OPCODE[]
-        01000: sr3, OPCODE[0]
-        01001: MD
-        01010: MA
-        01011: PC
-        01100: SP
-        01101: A
-        01110: EA
-        01111: C
-        10000:
+        00000: (b) r, OPCODE[]         
+        00001: (b) r2, OPCODE[]
+        00010: (b) r1, OPCODE[]
+        00011: (w) rp2, OPCODE[]
+        00100: (w) rp, OPCODE[]
+        00101: (w) rp1, OPCODE[]
+        00110: (b) sr/sr1, OPCODE[]
+        00111: () sr2, OPCODE[]
+        01000: () sr4, OPCODE[0]
+        01001: (b) MD_high_byte
+        01010: (w) MD_word
+        01011: (w) SP_PUSH_PC, transfer SP-1, auto decrement
+        01100: (w) SP_POP_PC
+        01101: (w) SP_PUSH_DATA, transfer SP-1
+        01110: (w) SP_POP_DATA(RETI)
+        01111: (b) A
+        10000: (w) EA
+        10001: (w) ADDR_SOFTI
+        10010: (w) ADDR_V_WA 
+        10011: (w) ADDR_IM    
+        10100: (w) ADDR_DIR  
+        10101: (w) ADDR_REL_S
+        10110: (w) ADDR_REL_L
+        10111: (w) -1
+        11000: (w) 1
+        11001: (w) 2
+        11010: (w) ALU temp register
+        11011: (w) *ADDR_INT, interrupt address
+        11100: (w) *ADDR_RPA_SINGLE, +, --
+        11101: (w) *ADDR_RPA_DOUBLE, ++, --
+        11110: (w) *ADDR_RPA_BASE
+        11111: () *ADDR_RPA_OFFSET, rpa/rpa3 addend select
+    D[8:3] source1, destination register type, decoded by the external circuit, :
+        00000: (b) r, OPCODE[]         
+        00001: (b) r2, OPCODE[]
+        00010: (b) r1, OPCODE[]
+        00011: (w) rp2, OPCODE[]
+        00100: (w) rp, OPCODE[]
+        00101: (w) rp1, OPCODE[]
+        00110: () sr/sr1, OPCODE[]
+        00111: () sr2, OPCODE[]
+        01000: () sr3, OPCODE[0]
+        01001: (b) MD_low_byte
+        01010: (w) MD_word
+        01011: (w) MA
+        01100: (w) PC
+        01101: (w) SP
+        01110: (b) A 
+        01111: (w) EA
+        10000: (b) C 
         10001:
         10010:
         10011:
@@ -221,11 +221,11 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
         11000:
         11001:
         11010:
-        11011:
-        11100:
-        11101: *ADDR_RPA_SINGLE, +, --     
-        11110: *ADDR_RPA_DOUBLE, ++, --
-        11111: *ADDR_RPA_OFFSET      
+        11011: 
+        11100: (w)ALU temp register
+        11101: (w)*ADDR_RPA_SINGLE, +, --     
+        11110: (w)*ADDR_RPA_DOUBLE, ++, --
+        11111: ()*ADDR_RPA_OFFSET      
     D[3:2] ALU operation type:
         00: bypass(source2 -> source1)
         01: add
@@ -241,36 +241,35 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
 
 
     2. ALU-REGISTER 2
-    01_X_X_X_X_X
-
+    01_X_X_XXXX_XXXX_?_XXX_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13:10] source2
-    0000:
-    0001:
-    0010:
-    0011:
-    0100:
-    0101:
-    0110:
-    0111:
-    1000:
-    1001:
-    1010:
-    1011:
-    1100:
-    1101:
+    0000: HL
+    0001: A
+    0010: EA
+    0011: BC(CALB)
+    0100: DE
+    0101: HL
+    0110: MD_high_byte
+    0111: MD_word
+    1000: PC
+    1001: PSW
+    1010: DE+(BLOCK)
+    1011: HL+(BLOCK)
+    1100: 
+    1101: 
     1110:
     1111:
     D[9:6] source1
-    0000:
-    0001:
-    0010:
-    0011:
-    0100:
-    0101:
-    0110:
+    0000: r2
+    0001: A
+    0010: EA
+    0011: MD_low_byte
+    0100: MD_word
+    0101: MA
+    0110: PSW
     0111:
     1000:
     1001:
@@ -280,23 +279,15 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
     1101:
     1110:
     1111:
-    D[5:2] ALU operation type:
-    0000: NEGA(negate)
-    0001: DAA(what the fuck is that)
-    0010: RLD(rotate left digit)
-    0011: RRD(rotate right digit)
-    0100: RLL
-    0101: RLR
-    0110: SLLC
-    0111: SLRC
-    1000: DRLL
-    1001: DRLR
-    1010: DSLL
-    1011: SDLR
-    1100: MUL
-    1101: DIV
-    1110:
-    1111:
+    D[4:2] ALU operation type:
+    000: bypass
+    001: NEGA(negate)
+    010: DAA(what the fuck is that)
+    011: RLD(rotate left digit)
+    100: RRD(rotate right digit)
+    101: MUL
+    110: DIV
+    111: shift operation, OPCODE[4], OPCODE[2]
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -306,7 +297,6 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
 
     3. SPECIAL OPERATION
     10_X_X_X_X_X_X_X_X_?_?_?_XXX_XX
-
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
@@ -335,16 +325,17 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
         11: 4-state read
 
     4. CONDITIONAL OPERATION
-    11_X_X_X_XXXX_X_X_X_X_X_X_X_XX
+    11_X_X_X_XXXX_X_X_X_X_X_?_?_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13]: nop
     D[12:9]: nop cycles 0=>1cycle, 15=16cycles
     D[8]: conditional PC write(BLOCK)
-    D[7]: conditional read(rpa)
-    D[6]: swap MD input order
-
+    D[7]: conditional read(rpa+byte or register)
+    D[6]: conditional branch on ALU type
+    D[5:4]: branch+ steps 0=>+2 3=>+5
+    D[3]: swap MA input order
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -505,11 +496,9 @@ reg             addr_data_sel;
 always @(posedge emuclk) begin
     if(!mrst_n) addr_data_sel <= 1'b0; //reset
     else begin
-        if(mcuclk_pcen) begin
-            if(cycle_tick) addr_data_sel <= 1'b0; //reset
-            else begin
-                if(current_bus_acc != IDLE) if(timing_sr[2]) addr_data_sel <= 1'b1;
-            end
+        if(cycle_tick) addr_data_sel <= 1'b0; //reset
+        else begin
+            if(current_bus_acc != IDLE) if(timing_sr[2]) addr_data_sel <= 1'b1;
         end
     end
 end
@@ -580,7 +569,7 @@ end
 
 
 //address high, multiplexed address low/byte data output
-wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MD[15:8] : reg_MD[7:0];
+wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MD[15:8] : reg_MD[7:0]; //MD출력 시 CALL에는 PC를 곧바로 출력, strax rpa시에는 EA를 출력
 wire    [7:0]   addr_hi_out = memory_access_address[15:8];
 wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
 
@@ -598,32 +587,30 @@ always @(posedge emuclk) begin
         wr_out <= 1'b0;
     end
     else begin
-        if(mcuclk_pcen) begin
-            if(cycle_tick) begin
-                if(mc_next_bus_acc != IDLE) ale_out <= 1'b1;
-            end
-            else begin
-                //ALE off
-                if(timing_sr[1]) ale_out <= 1'b0;
+        if(cycle_tick) begin
+            if(mc_next_bus_acc != IDLE) ale_out <= 1'b1;
+        end
+        else begin
+            //ALE off
+            if(timing_sr[1]) ale_out <= 1'b0;
 
-                //RD control
-                if(current_bus_acc == RD4) begin
-                    if(timing_sr[2]) rd_out <= 1'b1;
-                    else if(timing_sr[8]) rd_out <= 1'b0;
-                end
-                else if(current_bus_acc == RD3) begin
-                    if(timing_sr[2]) rd_out <= 1'b1;
-                    else if(timing_sr[6]) rd_out <= 1'b0;
-                end
-                else rd_out <= 1'b0;
-
-                //WR control
-                if(current_bus_acc == WR3) begin
-                    if(timing_sr[2]) wr_out <= 1'b1;
-                    else if(timing_sr[6]) wr_out <= 1'b0;
-                end
-                else wr_out <= 1'b0;
+            //RD control
+            if(current_bus_acc == RD4) begin
+                if(timing_sr[2]) rd_out <= 1'b1;
+                else if(timing_sr[8]) rd_out <= 1'b0;
             end
+            else if(current_bus_acc == RD3) begin
+                if(timing_sr[2]) rd_out <= 1'b1;
+                else if(timing_sr[6]) rd_out <= 1'b0;
+            end
+            else rd_out <= 1'b0;
+
+            //WR control
+            if(current_bus_acc == WR3) begin
+                if(timing_sr[2]) wr_out <= 1'b1;
+                else if(timing_sr[6]) wr_out <= 1'b0;
+            end
+            else wr_out <= 1'b0;
         end
     end
 end

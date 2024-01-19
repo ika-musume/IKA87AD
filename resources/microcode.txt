@@ -43,7 +43,7 @@ mvi sr2, byte
 2.nop, IDLE
 3.sr2<-MD, RD4
 
-mviw wa, byte ?????????????????????
+mviw wa, byte
 (4)cycle4333
 1.BK_swap MA input order, RD3
 2.nop, RD3
@@ -175,36 +175,32 @@ steax rpa3
 5.nop, RD4
 
 lbcd word (rp in opcode)
-(5)cycle443333
-1.nop, RD3
-2.nop, RD3
-3.MA<-MD, RD3
-4.nop, RD3
-5.rp<-MD, RD4
+(4)cycle443333
+1.nop, repeat 1 cycle, RD3
+2.MA<-MD, RD3
+3.nop, RD3
+4.rp<-MD, RD4
 
 lded word (rp in opcode)
-(5)cycle443333
-1.nop, RD3
-2.nop, RD3
-3.MA<-MD, RD3
-4.nop, RD3
-5.rp<-MD, RD4
+(4)cycle443333
+1.nop, repeat 1 cycle, RD3
+2.MA<-MD, RD3
+3.nop, RD3
+4.rp<-MD, RD4
 
 lhld word (rp in opcode)
-(5)cycle443333
-1.nop, RD3
-2.nop, RD3
-3.MA<-MD, RD3
-4.nop, RD3
-5.rp<-MD, RD4
+(4)cycle443333
+1.nop, repeat 1 cycle, RD3
+2.MA<-MD, RD3
+3.nop, RD3
+4.rp<-MD, RD4
 
 lspd word (rp in opcode)
-(5)cycle443333
-1.nop, RD3
-2.nop, RD3
-3.MA<-MD, RD3
-4.nop, RD3
-5.rp<-MD, RD4
+(4)cycle443333
+1.nop, repeat 1 cycle, RD3
+2.MA<-MD, RD3
+3.nop, RD3
+4.rp<-MD, RD4
 
 ldeax rpa3
 (3)cycle4433
@@ -257,7 +253,7 @@ addx, adcx, addncx, subx, sbbx, subncx, anax, orax, xrax, gtax, ltax, neax, eqax
 1.MA<-ADDR_RPA_SINGLE, RD3
 2.A<-A(operation)MD, RD4
 
-adi, aci, adinc, sui, sbi, suinb, ani, ori, xri, gti, lti, nei, eqi, oni, offi -> 15 operations
+adi, aci, adinc, sui, sbi, suinb, ani, ori, xri,        gti, lti, nei, eqi, oni, offi -> 15 operations
 (2)cycle43
 1.nop, RD3
 2.A<-A(operation)MD, RD4
@@ -266,16 +262,45 @@ adi, aci, adinc, sui, sbi, suinb, ani, ori, xri, gti, lti, nei, eqi, oni, offi -
 1.nop, RD3
 2.r<-r(operation)MD, RD4
 
-
-?????????????????????/
+*CONDITIONAL
 (5 or 3)cycle443333 or 4433
-1.AL<-sr2, RD3
-2.ALU temp<-ALU temp(operation)MD, IDLE
-3.conditional branch, if ALU instruction is comparision, ends here with RD4
-4.sr2<-ALU temp
+1.nop, RD3
+2.conditional branch, if ALU instruction is comparision, MCPC+4, IDLE
+3.sr2<-sr2(operation)MD, IDLE
+4.nop, IDLE
 5.nop, RD4
+|
+V
+3.sr2<-sr2(operation)MD, RD4
 
+addw, adcw, addncw, subw, sbbw, subnbw, anaw, oraw, xraw, gtaw, ltaw, neaw, eqaw, onaw, offaw
+(3)cycle4433
+1.nop, RD3
+2.MA<-Vwa, RD3
+3.A<-A(operation)MD
 
+aniw, oriw, gtiw, ltiw, neiw, eqiw, oniw, offiw
+(6 or 4)cycle433333 or 4333
+1.nop, RD3
+2.conditional branch, if ALU instruction is comparison, MCPC+5, RD3
+3.MA<-Vwa, RD3
+4.MD<-MD(operation)MD_high, IDLE
+5.MA<-MA-1, WR3
+6.nop, WR3
+|
+V
+3.MA<-Vwa, RD3
+4.MD<-MD(operation)MD_high, RD4
+
+eadd, esub
+(2)cycle443
+1.EA<-EA(operation)r2
+2.nop, RD4
+
+dadd, dadc, daddnc, dsub, dsbb, dsubnb, dan, dor, dxr, dgt, dlt, dne, deq, don doff -> 15 operations
+(2)cycle443
+1.EA<-EA(operation)rp3
+2.nop, RD4
 
 mul
 (3)cycle44_3333_3333
@@ -288,3 +313,155 @@ div
 1.ALU temp<-div, IDLE
 2.nop, 15 cycles, IDLE
 3.r2<-ALU temp, RD4
+
+inr
+(1)cycle4
+1.r2<-r2+1
+
+inrw
+(5)cycle43333
+1.nop, RD3
+2.MA<-Vwa, RD3
+3.MD_low_byte<-MD_low_byte+1, IDLE
+4.MA<-MA-1, WR3
+5.nop, RD4
+
+inx rp
+(2)cycle43
+1.MA<-MA+1, IDLE(stop PC increment)
+2.rp<-rp+1, RD4
+
+inx ea
+(2)cycle43
+1.MA<-MA+1, IDLE(stop PC increment)
+2.rp<-rp+1, RD4
+
+dcr
+(1)cycle4
+1.r2<-r2-1
+
+dcrw
+(5)cycle43333
+1.nop, RD3
+2.MA<-Vwa, RD3
+3.MD_low_byte<-MD_low_byte-1, IDLE
+4.MA<-MA-1, WR3
+5.nop, RD4
+
+dcx rp
+(2)cycle43
+1.MA<-MA+1, IDLE(stop PC increment)
+2.rp<-rp+1, RD4
+
+dcx ea
+(2)cycle43
+1.MA<-MA+1, IDLE(stop PC increment)
+2.rp<-rp+1, RD4
+
+daa
+(1)cycle4
+1.A<-daa
+
+stc clc
+(1)cycle4
+1.carry
+
+nega
+(1)cycle43
+1.A<-2's complement
+
+rld, rrd
+(4)cycle44333
+1.MA<-HL, RD4
+2.MD_low_byte<-(digit shift)-A, MD_word, IDLE
+3.MA<-MA-1, WR3
+4.A<-ALU temp, RD4
+
+rll, rlr, sll, slr
+(1)cycle44
+1.r2<-(shift)-r2
+
+drll, drlr, dsll, dslr
+(1)cycle44
+1.EA<-(shift)-EA
+
+jmp
+(3)cycle433
+1.nop, RD3
+2.nop, RD3
+3.PC<-MD
+
+jb
+(1)cycle4
+1.PC<-BC, RD4
+
+jr
+(3)cycle433
+1.MA<-MA+1(stop PC increase), IDLE
+2.PC<-jdisp1, IDLE
+3.nop, RD4
+
+jre
+(3)cycle433
+1.nop, RD3
+2.PC<-jdisp, IDLE
+3.nop, RD4
+
+jea
+(1)cycle44
+1.PC<-EA, RD4
+
+call
+(4)cycle43333
+1.nop, repeat 1 cycle, RD3
+2.MA<-SP_PUSH, WR3
+3.nop, WR3
+4.PC<-MD, RD4
+
+calb
+(4)cycle44333
+1.MA<-SP_PUSH, WR3
+2.nop, WR3
+3.nop, IDLE
+4.PC<-BC, RD4
+
+calf
+(4)cycle4333
+1.MA<-SP_PUSH, WR3
+2.nop, WR3
+3.nop, IDLE
+4.PC<-fa, RD4
+
+calt
+(4)cycle43333
+1.MA<-SP_PUSH, WR3
+2.nop, WR3
+3.nop, repeat 1 cycle, IDLE
+4.PC<-ta, RD4
+
+softi
+(5)cycle43333
+1.MA<-SP-, IDLE
+2.MD<-PSW, WR3
+3.MA<-SP_PUSH, WR3
+4.nop, WR3
+5.PC<-0060, RD4
+
+ret
+(3)cycle433
+1.MA<-SP_POP_PC, RD3
+2.nop, RD3
+3.nop, RD4
+
+rets
+(3)cycle433
+1.MA<-SP_POP_PC, RD3
+2.nop, RD3
+3.nop, RD4
+
+reti
+(4)cycle4333
+1.MA<-SP_POP_PC, RD3
+2.nop, RD3
+3.MA<-SP_POP_DATA, RD3
+4.PSW<-MD

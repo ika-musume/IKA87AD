@@ -28,6 +28,18 @@ wire            mcuclk_pcen = i_MCUCLK_PCEN;
 wire            mrst_n = i_RESET_n;
 
 
+///////////////////////////////////////////////////////////
+//////  OPCODE DECODER
+////
+
+reg     [2:0]   opcode_page;
+reg     [7:0]   reg_OPCODE;
+reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
+
+
+
+
+
 
 ///////////////////////////////////////////////////////////
 //////  MICROCODE OUTPUT SIGNALS
@@ -35,7 +47,7 @@ wire            mrst_n = i_RESET_n;
 
 
 
-
+wire    [17:0]  mc_output;
 
 //bus cycle types
 localparam IDLE = 2'b00;
@@ -44,26 +56,96 @@ localparam RD3 = 2'b10;
 localparam WR3 = 2'b11;
 
 //microcode types
-localparam MCTYPE0 = 2'b00;
-localparam MCTYPE1 = 2'b01;
+localparam MCTYPE0 = 2'd0;
+localparam MCTYPE1 = 2'd1;
+localparam MCTYPE2 = 2'd2;
+localparam MCTYPE3 = 2'd3;
 wire    [1:0]   mc_type;
+
+//next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte
+wire    [1:0]   mc_next_bus_acc =   (mc_type == MCTYPE3 && mc_output[7]) ? 
+                                        (reg_OPCODE[0] & reg_OPCODE[1]) ? 
+                                            RD3
+                                            : mc_output[1:0]
+                                        : mc_output[1:0];
 wire            mc_end_of_instruction = mc_next_bus_acc == RD4;
 
-//microcode type 0 fields
-//source 1/destination types
-localparam S1_DST_MD = 4'b1001;
-localparam S1_DST_MA = 4'b1010;
-localparam S1_DST_PC = 4'b1011;
-localparam S1_DST_SP = 4'b1100;
-//source 2 types
-localparam S2_SP_POP = 5'b01010;
-localparam S2_SP_PUSH = 5'b01011;
-wire    [4:0]   mc_s2;
-wire    [3:0]   mc_s1_dst;
-wire    [1:0]   mc_next_bus_acc;
+//MICROCODE TYPE 0 FIELDS
 
-//microcode type 2 fields
-wire    [10:0]  mc_bookkeeping;
+//source a/destination types
+localparam SA_DST_R      = 5'b00000;
+localparam SA_DST_R2     = 5'b00001;
+localparam SA_DST_R1     = 5'b00010;
+localparam SA_DST_RP2    = 5'b00011;
+localparam SA_DST_RP     = 5'b00100;
+localparam SA_DST_RP1    = 5'b00101;
+localparam SA_DST_SR_SR1 = 5'b00110;
+localparam SA_DST_SR2    = 5'b00111;
+localparam SA_DST_SR3    = 5'b01000;
+localparam SA_DST_MDL    = 5'b01001;
+localparam SA_DST_MD     = 5'b01010;
+localparam SA_DST_MA     = 5'b01011;
+localparam SA_DST_PC     = 5'b01100;
+localparam SA_DST_SP     = 5'b01101;
+localparam SA_DST_A      = 5'b00000;
+localparam SA_DST_EA     = 5'b00000;
+localparam SA_DST_C      = 5'b00000;
+localparam SA_DST_TEMP   = 5'b11100;
+localparam SA_DST_RPA1   = 5'b11101;
+localparam SA_DST_RPA    = 5'b11110;
+localparam SA_DST_RPA2   = 5'b11111;
+
+//source b types
+localparam SB_R          = 5'b00000;
+localparam SB_R2         = 5'b00001;
+localparam SB_R1         = 5'b00010;
+localparam SB_RP2        = 5'b00011;
+localparam SB_RP         = 5'b00100;
+localparam SB_RP1        = 5'b00101;
+localparam SB_SR_SR1     = 5'b00110;
+localparam SB_SR2        = 5'b00111;
+localparam SB_SR4        = 5'b01000;
+localparam SB_MDH        = 5'b01001;
+localparam SB_MD         = 5'b01010;
+localparam SB_SP_PUSH    = 5'b01011;
+localparam SB_SP_POP     = 5'b01100;
+localparam SB_PC         = 5'b01101;
+localparam SB_A          = 5'b01110;
+localparam SB_EA         = 5'b01111;
+localparam SB_ADDR_SOFTI = 5'b10000;
+localparam SB_ADDR_V_WA  = 5'b10001;
+localparam SB_ADDR_IMM   = 5'b10010;
+localparam SB_ADDR_DIR   = 5'b10011;
+localparam SB_ADDR_REL_S = 5'b10100;
+localparam SB_ADDR_REL_L = 5'b10101;
+localparam SB_ADDR_INT   = 5'b10110;
+localparam SB_SUB2       = 5'b10111;
+localparam SB_SUB1       = 5'b11000;
+localparam SB_ADD1       = 5'b11001;
+localparam SB_ADD2       = 5'b11010;
+localparam SB_TEMP       = 5'b11011;
+localparam SB_RPA1       = 5'b11100;
+localparam SB_RPA        = 5'b11101;
+localparam SB_RPA2       = 5'b11110;
+localparam SB_OFFSET     = 5'b11111;
+
+wire    [4:0]   mc_sb; //microcode type 0, source b
+wire    [3:0]   mc_sa_dst; //microcode type 0, source a
+
+
+
+
+localparam SC_DST_MA     = 4'b0101;
+localparam SC_DST_MDL    = 4'b0011;
+localparam SC_DST_MD     = 4'b0100;
+
+localparam SD_PC         = 4'b1000;
+
+wire    [3:0]   mc_sd; //microcode type 1, source d
+wire    [3:0]   mc_sc_dst; //microcode type 1, source c
+
+//microcode type 3 fields
+wire    [9:0]   mc_conditional;
 
 
 wire    [15:0]  alu_wrdata; //ALU output
@@ -85,15 +167,15 @@ reg     [15:0]  reg_PC, reg_SP, reg_MA;
 reg     [11:0]  timing_sr;
 reg     [1:0]   current_bus_acc;
 
-wire    opcode_tick = timing_sr[11] & current_bus_acc == RD4;
-wire    rw_tick = timing_sr[8] & current_bus_acc != RD4;
+wire    opcode_tick = timing_sr[11] & current_bus_acc == RD4 & mcuclk_pcen;
+wire    rw_tick = timing_sr[8] & current_bus_acc != RD4 & mcuclk_pcen;
 wire    cycle_tick = opcode_tick | rw_tick;
 
-wire    mc_read_tick = timing_sr[8] | timing_sr[11];
+wire    mc_read_tick = timing_sr[8] | timing_sr[11] & mcuclk_pcen;
 
-wire    opcode_inlatch_tick = timing_sr[6] & current_bus_acc == RD4;
-wire    md_inlatch_tick = timing_sr[6] & current_bus_acc == RD3;
-wire    full_opcode_inlatch_tick_debug = timing_sr[6] & (current_bus_acc == RD4 | current_bus_acc == RD3);
+wire    opcode_inlatch_tick = timing_sr[6] & current_bus_acc == RD4 & mcuclk_pcen;
+wire    md_inlatch_tick = timing_sr[6] & current_bus_acc == RD3 & mcuclk_pcen;
+wire    full_opcode_inlatch_tick_debug = timing_sr[6] & (current_bus_acc == RD4 | current_bus_acc == RD3) & mcuclk_pcen;
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
@@ -132,12 +214,8 @@ end
 
 
 
-///////////////////////////////////////////////////////////
-//////  OPCODE DECODER
-////
 
-reg     [7:0]   reg_OPCODE;
-reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
+
 
 
 
@@ -160,7 +238,7 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:9] source2
+    D[13:9] source B
         00000: (b) r, OPCODE[]         
         00001: (b) r2, OPCODE[]
         00010: (b) r1, OPCODE[]
@@ -172,28 +250,28 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
         01000: () sr4, OPCODE[0]
         01001: (b) MD_high_byte
         01010: (w) MD_word
-        01011: (w) SP_PUSH_PC, transfer SP-1, auto decrement
-        01100: (w) SP_POP_PC
-        01101: (w) SP_PUSH_DATA, transfer SP-1
-        01110: (w) SP_POP_DATA(RETI)
-        01111: (b) A
-        10000: (w) EA
-        10001: (w) ADDR_SOFTI
-        10010: (w) ADDR_V_WA 
-        10011: (w) ADDR_IM    
-        10100: (w) ADDR_DIR  
-        10101: (w) ADDR_REL_S
-        10110: (w) ADDR_REL_L
-        10111: (w) -1
-        11000: (w) 1
-        11001: (w) 2
-        11010: (w) ALU temp register
-        11011: (w) *ADDR_INT, interrupt address
-        11100: (w) *ADDR_RPA_SINGLE, +, --
-        11101: (w) *ADDR_RPA_DOUBLE, ++, --
-        11110: (w) *ADDR_RPA_BASE
-        11111: () *ADDR_RPA_OFFSET, rpa/rpa3 addend select
-    D[8:3] source1, destination register type, decoded by the external circuit, :
+        01011: (w) SP_PUSH, transfer SP-1, auto decrement
+        01100: (w) SP_POP
+        01101: (w) PC
+        01110: (w) A
+        01111: (b) EA
+        10000: (w) ADDR_SOFTI
+        10001: (w) ADDR_V_WA 
+        10010: (w) ADDR_IM    
+        10011: (w) ADDR_DIR  
+        10100: (w) ADDR_REL_S
+        10101: (w) ADDR_REL_L
+        10110: (w) *ADDR_INT, interrupt address
+        10111: (w) -2
+        11000: (w) -1
+        11001: (w) 1
+        11010: (w) 2
+        11011: (w) ALU temp register 
+        11100: (w) *RPA1
+        11101: (w) *RPA
+        11110: (w) *RPA2
+        11111: (w) *RPA_OFFSET, rpa2/rpa3 A, B, EA, byte addend select
+    D[8:3] source A, destination register type, decoded by the external circuit, :
         00000: (b) r, OPCODE[]         
         00001: (b) r2, OPCODE[]
         00010: (b) r1, OPCODE[]
@@ -223,9 +301,9 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
         11010:
         11011: 
         11100: (w)ALU temp register
-        11101: (w)*ADDR_RPA_SINGLE, +, --     
-        11110: (w)*ADDR_RPA_DOUBLE, ++, --
-        11111: ()*ADDR_RPA_OFFSET      
+        11101: (w)RPA1, for rpa double increment
+        11110: (w)RPA
+        11111: (w)RPA2      
     D[3:2] ALU operation type:
         00: bypass(source2 -> source1)
         01: add
@@ -245,7 +323,7 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:10] source2
+    D[13:10] source D
     0000: HL
     0001: A
     0010: EA
@@ -262,7 +340,7 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
     1101: 
     1110:
     1111:
-    D[9:6] source1
+    D[9:6] source C, destination
     0000: r2
     0001: A
     0010: EA
@@ -295,7 +373,7 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
         11: 4-state read
 
 
-    3. SPECIAL OPERATION
+    3. BOOKKEEPING OPERATION
     10_X_X_X_X_X_X_X_X_?_?_?_XXX_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
@@ -324,18 +402,18 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
         10: 3-state write
         11: 4-state read
 
-    4. CONDITIONAL OPERATION
+    4. SPECIAL OPERATION
     11_X_X_X_XXXX_X_X_X_X_X_?_?_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13]: nop
     D[12:9]: nop cycles 0=>1cycle, 15=16cycles
-    D[8]: conditional PC write(BLOCK)
+    D[8]: conditional PC decrement(BLOCK)
     D[7]: conditional read(rpa+byte or register)
     D[6]: conditional branch on ALU type
     D[5:4]: branch+ steps 0=>+2 3=>+5
-    D[3]: swap MA input order
+    D[3]: swap MD input order
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -349,15 +427,23 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
 ////
 
 
-wire            reg_PC_wr = mc_type == MCTYPE0 && mc_s1_dst == S1_DST_PC;
-wire            reg_SP_wr = mc_type == MCTYPE0 && mc_s1_dst == S1_DST_SP;
-wire            reg_MA_wr = mc_type == MCTYPE0 && mc_s1_dst == S1_DST_MA;
-wire            reg_MA_swap_input_order = mc_type == MCTYPE2 && mc_bookkeeping[4];
-wire            
+wire            reg_PC_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC;
+wire            reg_SP_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP;
 
-wire            reg_SP_pop = mc_type == MCTYPE0 && mc_s2 == S2_SP_POP;
-wire            reg_SP_push = mc_type == MCTYPE0 && mc_s2 == S2_SP_PUSH;
+//Memory IO related registers, MA=Memory Address, MD=Memory Data
+wire            reg_MA_dec_mode  = mc_type == MCTYPE0 && mc_sb == SB_SP_PUSH && mc_sa_dst == SA_DST_MA;
+wire            reg_MA_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MA) ||
+                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA);
 
+wire            reg_MDL_wr_A  = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd0);
+wire            reg_MD_wr_EA = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd1);
+wire            reg_MDL_wr  = (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL || mc_sa_dst == SA_DST_MD)) || 
+                             (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDL || mc_sc_dst == SC_DST_MD));
+wire            reg_MDH_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
+                             (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD);
+wire            reg_MD_swap_input_order = mc_type == MCTYPE3 && mc_conditional[0]; //swaps MD input order, from lo->hi to hi->lo
+wire            reg_MD_swap_output_order = (mc_type == MCTYPE0 && mc_sb == SB_PC && mc_sa_dst == SA_DST_MD) ||
+                                           (mc_type == MCTYPE1 && mc_sd == SD_PC && mc_sc_dst == SC_DST_MD); //swaps MD output order, PC push to stack
 
 
 ///////////////////////////////////////////////////////////
@@ -373,48 +459,67 @@ wire            reg_SP_push = mc_type == MCTYPE0 && mc_s2 == S2_SP_PUSH;
 //////  REGISTER FILE
 ////
 
+
+/*
+    TODO
+    SP_POP PUSH건드렸을때 SP자동감소증가하게 만들기
+
+    /strax rpa시에는 EA를 출력
+
+    출력 바이트/워드 전환 스위치는 PC도 따로 있고 MA도 따로 둬야함
+
+*/
+
+
+//
+//  General purpose registers
+//
+
+reg     [7:0]   reg_EAH, reg_EAL, reg_V, reg_A, reg_B, reg_C, reg_D, reg_E, reg_H, reg_L [0:1];
+
+
+reg     [15:0]  reg_INLATCH; //inlatch for data sampling
+reg     [7:0]   reg_MDH, reg_MDL; //byte [15:8], word[15:0]
+
+
+
 //
 //  PC, SP, MA registers with auto increment/decrement feature
 //
 
 //address source selector
-localparam PC = 2'b00;
-localparam SP = 2'b01;
-localparam MA = 2'b10;
-localparam MA_RESERVED = 2'b11;
-reg     [1:0]   address_source_sel; //00 = PC, 01 = SP, 10 = MA, 11 = reserved
+localparam PC = 2'b0;
+localparam MA = 2'b1;
+reg             address_source_sel;
+reg             reg_PC_inc_stop, reg_MA_inc_ndec;
 reg     [15:0]  memory_access_address;
 
-//SP auto inc/dec flag
-reg             reg_SP_inc_ndec; //SP inc/dec flag
 
-//this block defines the LOAD, INC and DEC operations of the PC/SP/MA register
+//this block defines the operation of the PC/MA registers
 always @(posedge emuclk) begin
     //ADDRESS OUTPUT SOURCE SELECT
     if(!mrst_n) begin
         address_source_sel <= PC;
+        reg_PC_inc_stop <= 1'b0;
+
+        reg_MA_inc_ndec <= 1'b1;
     end
     else begin
         if(cycle_tick) begin
-            if(mc_end_of_instruction) address_source_sel <= PC;
+            if(mc_end_of_instruction) begin
+                address_source_sel <= PC;
+                reg_PC_inc_stop <= 1'b0;
+
+                reg_MA_inc_ndec <= 1'b1;
+            end
             else begin
                 if(reg_PC_wr) address_source_sel <= PC; //select PC
-                else if((reg_SP_pop || reg_SP_push) && reg_MA_wr) address_source_sel <= 2'b01; //select SP
-                else if(reg_MA_wr) address_source_sel <= 2'b10; //select MA
-                else address_source_sel <= address_source_sel;
-            end
-        end
-    end
+                else if(reg_MA_wr) begin
+                    address_source_sel <= MA; //select MA
+                    reg_PC_inc_stop <= 1'b1;
+                end
 
-    //INC/DEC FLAG
-    if(!mrst_n) begin
-        reg_SP_inc_ndec <= 1'b1;
-    end
-    else begin
-        if(cycle_tick) begin
-            if(mc_end_of_instruction) reg_SP_inc_ndec <= 1'b1;
-            else begin
-                if(reg_SP_push && reg_MA_wr) reg_SP_inc_ndec <= 1'b0; //sub 1 from SP -> set SP auto decrement mode
+                if(reg_MA_dec_mode) reg_MA <= 1'b0;
             end
         end
     end
@@ -430,37 +535,25 @@ always @(posedge emuclk) begin
             //Program Counter load/auto increment conditions
             if(reg_PC_wr) reg_PC <= alu_wrdata;
             else begin
-                if(mc_next_bus_acc == RD4 || mc_next_bus_acc == RD3) begin //if there's a 3cyc/4cyc read access,
-                    if(address_source_sel != PC || reg_MA_wr) begin //but check if it's a mem acc other than a next instruction fetch
-                        reg_PC <= reg_PC;
-                    end
-                    else begin //Instruction read cycle? increase PC
-                        reg_PC <= reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
-                    end
+                if(reg_PC_inc_stop) reg_PC <= reg_PC;
+                else begin
+                    if(current_bus_acc == RD4 || current_bus_acc == RD3) reg_PC <= reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
                 end
-                else reg_PC <= reg_PC;
             end
 
-            //Stack Pointer load/auto inc/dec conditions
+            //Stack Pointer load condition
             if(reg_SP_wr) reg_SP <= alu_wrdata;
-            else begin
-                if(mc_next_bus_acc == RD3 || mc_next_bus_acc == WR3) begin //if there's a 3cyc read/write access,
-                    if(address_source_sel == SP) begin //but check if it's a mem acc using the SP value
-                        if(reg_SP_inc_ndec) reg_SP <= reg_SP == 16'hFFFF ? 16'h0000 : reg_SP + 16'h0001;
-                        else reg_SP <= reg_SP == 16'h0000 ? 16'hFFFF : reg_SP - 16'h0001;
-                    end
-                    else reg_SP <= reg_SP;
-                end
-                else reg_SP <= reg_SP;
-            end
 
             //Memory Address load/auto inc conditions
             if(reg_MA_wr) reg_MA <= alu_ma_wrdata;
             else begin
-                if(opcode_tick) reg_MA <= reg_PC; ///4사이클 읽기 끝나면 새 PC로 MA업데이트하는 코드 작성하기
+                if(opcode_tick) reg_MA <= reg_PC;
                 else begin
-                    if(mc_next_bus_acc == RD3 || mc_next_bus_acc == WR3) begin //if there's a 3cyc read/write access,
-                        if(address_source_sel == MA) reg_MA <= reg_MA == 16'hFFFF ? 16'h0000 : reg_MA + 16'h0001;
+                    if(current_bus_acc == RD3 || current_bus_acc == WR3) begin //if there was a 3cyc read/write access,
+                        if(address_source_sel == MA) begin
+                            if(reg_MA_inc_ndec) reg_MA <= reg_MA == 16'hFFFF ? 16'h0000 : reg_MA + 16'h0001;
+                            else reg_MA <= reg_MA == 16'h0000 ? 16'hFFFF : reg_MA - 16'h0001;
+                        end
                         else reg_MA <= reg_MA;
                     end
                     else reg_MA <= reg_MA;
@@ -473,18 +566,12 @@ end
 always @(*) begin
     case(address_source_sel)
         PC: memory_access_address = reg_PC;
-        SP: memory_access_address = reg_SP;
         MA: memory_access_address = reg_MA;
-        RPA2: memory_access_address = 16'hFFFF;
     endcase
 end
 
 
-//
-//  General purpose registers
-//
 
-reg_SP <= reg_SP == 16'hFFFF ? 16'h0000 : reg_SP + 16'h0001;
 
 
 ///////////////////////////////////////////////////////////
@@ -518,14 +605,14 @@ always @(posedge emuclk) begin
                 md_in_byte_sel <= 1'b0;
             end
             else begin
-                //swap output data order(to HI->LO) when the current instruction is PUSH
-                if(reg_SP_push && reg_MA_wr) md_out_byte_sel <= 1'b1;
+                //swap output data order(to HI->LO) when the current microcode operation is MD<-PC
+                if(reg_MD_swap_output_order) md_out_byte_sel <= 1'b1;
                 else begin
                     if(current_bus_acc == WR3) md_out_byte_sel <= ~md_out_byte_sel;
                 end
 
                 //swap input data order(to HI->LO) when the bookkeeping bit is hot, this is for WA, BYTE instruction
-                if(reg_MA_swap_input_order) md_in_byte_sel <= 1'b1;
+                if(reg_MD_swap_input_order) md_in_byte_sel <= 1'b1;
                 else begin
                     if(current_bus_acc == RD3) md_in_byte_sel <= ~md_in_byte_sel;
                 end
@@ -536,21 +623,35 @@ end
 
 
 //OPCODE/memory data IO
-wire            reg_MD_wr = (mc_s1_dst == S1_DST_MD && mc_type == MCTYPE0);
-reg     [15:0]  reg_MD; //byte [15:8], word[15:0]
-
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        reg_MD <= 16'h0000;
+        reg_INLATCH <= 16'h0000;
+        reg_MDL <= 8'h00;
+        reg_MDH <= 8'h00;
         reg_OPCODE <= 8'h00;
     end
     else begin
         if(mcuclk_pcen) begin
             //Memory Data register load
-            if(cycle_tick) if(reg_MD_wr) reg_MD <= alu_wrdata;
+            if(cycle_tick) begin
+                if(reg_MDL_wr_A) begin //save A to MDL(rpa2, stax)
+                    reg_MDL <= reg_A;
+                end
+                else if(reg_MD_wr_EA) begin //save EA to MD(rpa2, steax)
+                    reg_MDL <= reg_EAL;
+                    reg_MDH <= reg_EAH;
+                end
+                else begin
+                    if(reg_MDL_wr) reg_MDL <= alu_wrdata[7:0];
+                    else reg_MDL <= reg_INLATCH[7:0];
+
+                    if(reg_MDH_wr) reg_MDH <= alu_wrdata[15:8];
+                    else reg_MDH <= reg_INLATCH[15:8];
+                end
+            end
             else if(md_inlatch_tick) begin
-                if(md_in_byte_sel) reg_MD[15:8] <= i_PD_I;
-                else reg_MD[7:0] <= i_PD_I;
+                if(md_in_byte_sel) reg_INLATCH[15:8] <= i_PD_I;
+                else reg_INLATCH[7:0] <= i_PD_I;
             end
 
             //Opcode register load
@@ -569,7 +670,7 @@ end
 
 
 //address high, multiplexed address low/byte data output
-wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MD[15:8] : reg_MD[7:0]; //MD출력 시 CALL에는 PC를 곧바로 출력, strax rpa시에는 EA를 출력
+wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MDH : reg_MDL;
 wire    [7:0]   addr_hi_out = memory_access_address[15:8];
 wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
 

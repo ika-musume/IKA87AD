@@ -476,17 +476,32 @@ stop, hlt
 1.nop, IDLE
 2.bookkeeping
 
-1x25
+*SPECIAL INSTRUCTION* HARDWARE INTERRUPT
+hardi
+(5)cycle43333
+1.MA<-SP_PUSH, IDLE
+2.MD<-PSW, WR3
+3.MD<-PC, WR3
+4.SP<-SP-2, WR3
+5.PC<-ADDR_INT, RD4
+
+illegal
+(1)cycle4
+1.nop, RD4
+
+
+
+1x26
 2x16
 3x18
 4x15
-5x11
+5x12
 6x1
 8x1
 
-1w 18
+1w 20
 2w 16
-3w+1w 7
-5w+3w 11
+3w+1w 6
+5w+3w 12
 8w 2
-18+32+28+88+16=182?
+19+32+24+96+16=188?

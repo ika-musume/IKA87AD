@@ -1,16 +1,30 @@
 module IKA87AD (
+    //clock
     input   wire            i_EMUCLK,
     input   wire            i_MCUCLK_PCEN,
-    input   wire            i_RESET_n,
 
+    //system control
+    input   wire            i_RESET_n,
+    input   wire            i_STOP_n,
+
+    //R/W control
     output  wire            o_ALE,
     output  wire            o_RD_n,
     output  wire            o_WR_n,
 
+    //interrupt control
+    input   wire            i_NMI_n,
+    input   wire            i_INT1,
+
+    //port C I/O and DIRECTION
+    input   wire    [7:0]   i_PC_I,
+    output  wire    [7:0]   o_PC_O,
+    output  wire    [7:0]   o_PC_DIR,
+
+    //port D I/O and DIRECTION
     input   wire    [7:0]   i_PD_I,
     output  wire    [7:0]   o_PD_O,
     output  wire    [7:0]   o_PD_DIR
-
 );
 
 
@@ -44,8 +58,6 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
 ///////////////////////////////////////////////////////////
 //////  MICROCODE OUTPUT SIGNALS
 ////
-
-
 
 wire    [17:0]  mc_output;
 
@@ -90,9 +102,8 @@ localparam SA_DST_SP     = 5'b01101;
 localparam SA_DST_A      = 5'b00000;
 localparam SA_DST_EA     = 5'b00000;
 localparam SA_DST_C      = 5'b00000;
-localparam SA_DST_TEMP   = 5'b11100;
-localparam SA_DST_RPA1   = 5'b11101;
-localparam SA_DST_RPA    = 5'b11110;
+localparam SA_DST_TEMP   = 5'b10001;
+localparam SA_DST_RPA1   = 5'b11110;
 localparam SA_DST_RPA2   = 5'b11111;
 
 //source b types
@@ -107,8 +118,6 @@ localparam SB_SR2        = 5'b00111;
 localparam SB_SR4        = 5'b01000;
 localparam SB_MDH        = 5'b01001;
 localparam SB_MD         = 5'b01010;
-localparam SB_SP_PUSH    = 5'b01011;
-localparam SB_SP_POP     = 5'b01100;
 localparam SB_PC         = 5'b01101;
 localparam SB_A          = 5'b01110;
 localparam SB_EA         = 5'b01111;
@@ -124,8 +133,7 @@ localparam SB_SUB1       = 5'b11000;
 localparam SB_ADD1       = 5'b11001;
 localparam SB_ADD2       = 5'b11010;
 localparam SB_TEMP       = 5'b11011;
-localparam SB_RPA1       = 5'b11100;
-localparam SB_RPA        = 5'b11101;
+localparam SB_RPA1       = 5'b11101;
 localparam SB_RPA2       = 5'b11110;
 localparam SB_OFFSET     = 5'b11111;
 
@@ -133,30 +141,28 @@ wire    [4:0]   mc_sb; //microcode type 0, source b
 wire    [3:0]   mc_sa_dst; //microcode type 0, source a
 
 
-
-
+//MICROCODE TYPE 1 FIELDS
+//source c types
 localparam SC_DST_MA     = 4'b0101;
 localparam SC_DST_MDL    = 4'b0011;
 localparam SC_DST_MD     = 4'b0100;
 
+//source d types
 localparam SD_PC         = 4'b1000;
 
 wire    [3:0]   mc_sd; //microcode type 1, source d
 wire    [3:0]   mc_sc_dst; //microcode type 1, source c
 
-//microcode type 3 fields
+
+//MICROCODE TYPE 2 FIELDS
+wire    [7:0]   mc_bookkeeping;
+
+//MICROCODE TYPE 3 FIELDS
 wire    [9:0]   mc_conditional;
 
 
-wire    [15:0]  alu_wrdata; //ALU output
-wire    [15:0]  alu_ma_wrdata; //ALU output for the memory address register
 
 
-///////////////////////////////////////////////////////////
-//////  REGISTERS
-////
-
-reg     [15:0]  reg_PC, reg_SP, reg_MA;
 
 
 
@@ -219,6 +225,7 @@ end
 
 
 
+
 ///////////////////////////////////////////////////////////
 //////  MICROCODE ENGINE
 ////
@@ -250,8 +257,8 @@ end
         01000: () sr4, OPCODE[0]
         01001: (b) MD_high_byte
         01010: (w) MD_word
-        01011: (w) SP_PUSH, transfer SP-1, auto decrement
-        01100: (w) SP_POP
+        01011:
+        01100:
         01101: (w) PC
         01110: (w) A
         01111: (b) EA
@@ -267,8 +274,8 @@ end
         11001: (w) 1
         11010: (w) 2
         11011: (w) ALU temp register 
-        11100: (w) *RPA1
-        11101: (w) *RPA
+        11100: 
+        11101: (w) *RPA1
         11110: (w) *RPA2
         11111: (w) *RPA_OFFSET, rpa2/rpa3 A, B, EA, byte addend select
     D[8:3] source A, destination register type, decoded by the external circuit, :
@@ -289,7 +296,7 @@ end
         01110: (b) A 
         01111: (w) EA
         10000: (b) C 
-        10001:
+        10001: (w) ALU temp register
         10010:
         10011:
         10100:
@@ -300,9 +307,9 @@ end
         11001:
         11010:
         11011: 
-        11100: (w)ALU temp register
-        11101: (w)RPA1, for rpa double increment
-        11110: (w)RPA
+        11100: 
+        11101: 
+        11110: (w)RPA1, for rpa double increment
         11111: (w)RPA2      
     D[3:2] ALU operation type:
         00: bypass(source2 -> source1)
@@ -319,7 +326,7 @@ end
 
 
     2. ALU-REGISTER 2
-    01_X_X_XXXX_XXXX_?_XXX_XX
+    01_X_X_XXXX_XXXX_XXXX_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
@@ -327,45 +334,54 @@ end
     0000: HL
     0001: A
     0010: EA
-    0011: BC(CALB)
+    0011: BC
     0100: DE
     0101: HL
     0110: MD_high_byte
     0111: MD_word
     1000: PC
     1001: PSW
-    1010: DE+(BLOCK)
-    1011: HL+(BLOCK)
+    1010:
+    1011:
     1100: 
     1101: 
     1110:
-    1111:
-    D[9:6] source C, destination
-    0000: r2
-    0001: A
-    0010: EA
-    0011: MD_low_byte
-    0100: MD_word
-    0101: MA
-    0110: PSW
-    0111:
-    1000:
-    1001:
-    1010:
-    1011:
+    1111: (w) *RPA
+    D[9:7] source C, destination
+    0000: (b) r2
+    0001: (b) A
+    0010: (w) EA
+    0011: (b) MD_low_byte
+    0100: (w) MD_word
+    0101: (w) MA
+    0110: (b) PSW
+    0111: 
+    1000: 
+    1001: 
+    1010: 
+    1011: 
+    1100: 
+    1101: 
+    1110: 
+    1111: (w) *RPA
+
+    D[6:2] ALU operation type:
+    0000: bypass
+    0001: NEGA(negate)
+    0010: DAA(what the fuck is that)
+    0011: RLD(rotate left digit)
+    0100: RRD(rotate right digit)
+    0101: MUL
+    0110: DIV
+    0111: shift operation, OPCODE[4], OPCODE[2]
+    1000: (-A)push operation: alu out=A-1, ma out=A-1
+    1001: (A+)pop operation: alu out=A+1, ma out=A
+    1010: rpa auto decrement/increment operation, use opcode field
+    1011: 
     1100:
     1101:
     1110:
     1111:
-    D[4:2] ALU operation type:
-    000: bypass
-    001: NEGA(negate)
-    010: DAA(what the fuck is that)
-    011: RLD(rotate left digit)
-    100: RRD(rotate right digit)
-    101: MUL
-    110: DIV
-    111: shift operation, OPCODE[4], OPCODE[2]
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -383,11 +399,8 @@ end
     D[11]: EXX
     D[10]: EXA
     D[9]: EXH
-    D[8]: BIT
-    D[7]: 
-    D[6]: 
-    D[5]: 
-    D[4:2]: CPU control
+    D[8]: BIT 
+    D[7:5]: CPU control
         000: SK
         001: SKN
         010: SKIT
@@ -396,6 +409,9 @@ end
         101: STOP
         110: 
         111:
+    D[4]: reserved
+    D[3]: reserved
+    D[2]: reserved
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -423,7 +439,7 @@ end
 
 
 ///////////////////////////////////////////////////////////
-//////  MICROCODE OUTPUT DECODER
+//////  MICROCODE/ALU OUTPUT DECODER
 ////
 
 
@@ -446,12 +462,10 @@ wire            reg_MD_swap_output_order = (mc_type == MCTYPE0 && mc_sb == SB_PC
                                            (mc_type == MCTYPE1 && mc_sd == SD_PC && mc_sc_dst == SC_DST_MD); //swaps MD output order, PC push to stack
 
 
-///////////////////////////////////////////////////////////
-//////  ALU
-////
 
-
-
+reg     [15:0]  alu_wrdata; //ALU output
+reg     [15:0]  alu_ma_wrdata; //ALU output for the memory address register
+reg             reg_TEMP_wr;
 
 
 
@@ -459,33 +473,41 @@ wire            reg_MD_swap_output_order = (mc_type == MCTYPE0 && mc_sb == SB_PC
 //////  REGISTER FILE
 ////
 
-
 /*
     TODO
-    SP_POP PUSH건드렸을때 SP자동감소증가하게 만들기
+    인터럽트 샘플링 시 RD4 3사이클(12 x mcupcen = 800ns)동안 신호가 유지되어야함, 2 x mcupcen동안 뭔가 시프트
 
-    /strax rpa시에는 EA를 출력
-
-    출력 바이트/워드 전환 스위치는 PC도 따로 있고 MA도 따로 둬야함
-
+    RPA auto increment랑 push랑 pop은 ALU2로 넘겼으니 그거 작업하기
 */
-
 
 //
 //  General purpose registers
 //
 
 reg     [7:0]   reg_EAH, reg_EAL, reg_V, reg_A, reg_B, reg_C, reg_D, reg_E, reg_H, reg_L [0:1];
-
-
 reg     [15:0]  reg_INLATCH; //inlatch for data sampling
 reg     [7:0]   reg_MDH, reg_MDL; //byte [15:8], word[15:0]
+reg     [15:0]  reg_TEMP;
+
+
+//
+//  Special registers
+//
+
+reg     [7:0]   reg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, nmi(??) 
+reg     [2:0]   reg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
+
+
+
+
 
 
 
 //
 //  PC, SP, MA registers with auto increment/decrement feature
 //
+
+reg     [15:0]  reg_PC, reg_SP, reg_MA;
 
 //address source selector
 localparam PC = 2'b0;
@@ -715,6 +737,220 @@ always @(posedge emuclk) begin
         end
     end
 end
+
+
+
+///////////////////////////////////////////////////////////
+//////  READ PORT MULTIPLEXERS
+////
+
+//r addressing
+reg     [7:0]   reg_R, reg_R2, reg_R1;
+always (*) begin
+    case(reg_OPCODE[2:0])
+        3'b000: reg_R = reg_V;
+        3'b001: reg_R = reg_A;
+        3'b010: reg_R = reg_B;
+        3'b011: reg_R = reg_C;
+        3'b100: reg_R = reg_D;
+        3'b101: reg_R = reg_E;
+        3'b110: reg_R = reg_H;
+        3'b111: reg_R = reg_L;
+    endcase
+
+    case(reg_OPCODE[2:0])
+        3'b000: reg_R1 = reg_EAH;
+        3'b001: reg_R1 = reg_EAL;
+        3'b010: reg_R1 = reg_B;
+        3'b011: reg_R1 = reg_C;
+        3'b100: reg_R1 = reg_D;
+        3'b101: reg_R1 = reg_E;
+        3'b110: reg_R1 = reg_H;
+        3'b111: reg_R1 = reg_L;
+    endcase
+
+    case(reg_OPCODE[1:0])
+        2'b00: reg_R2 = reg_V;
+        2'b01: reg_R2 = reg_A;
+        2'b10: reg_R2 = reg_B;
+        2'b11: reg_R2 = reg_C;
+    endcase
+end
+
+//rp addressing
+reg     [15:0]   reg_RP2, reg_RP, reg_RP1;
+always (*) begin
+    case(reg_OPCODE[6:4])
+        3'b000: reg_RP2 = reg_SP;
+        3'b001: reg_RP2 = {reg_B, reg_C};
+        3'b010: reg_RP2 = {reg_D, reg_E};
+        3'b011: reg_RP2 = {reg_H, reg_L};
+        3'b100: reg_RP2 = {reg_E, reg_A};
+        3'b101: reg_RP2 = 16'h0000; //not specified on the datasheet
+        3'b110: reg_RP2 = 16'h0000;
+        3'b111: reg_RP2 = 16'h0000;
+    endcase
+
+    case(reg_OPCODE[2:0])
+        3'b000: reg_RP1 = {reg_V, reg_A};
+        3'b001: reg_RP1 = {reg_B, reg_C};
+        3'b010: reg_RP1 = {reg_D, reg_E};
+        3'b011: reg_RP1 = {reg_H, reg_L};
+        3'b100: reg_RP1 = {reg_E, reg_A};
+        3'b101: reg_RP1 = 16'h0000;
+        3'b110: reg_RP1 = 16'h0000;
+        3'b111: reg_RP1 = 16'h0000;
+    endcase
+
+    case(reg_OPCODE[1:0])
+        2'b00: reg_RP = reg_SP;
+        2'b01: reg_RP = {reg_B, reg_C};
+        2'b10: reg_RP = {reg_D, reg_E};
+        2'b11: reg_RP = {reg_H, reg_L};
+    endcase
+end
+
+//rpa addressing
+reg     [15:0]   reg_RPA1, reg_RPA, reg_RPA2, reg_RPA_OFFSET;
+always @(*) begin
+    case(reg_OPCODE[1:0])
+        2'b00: reg_RPA1 = 16'h0000;
+        2'b01: reg_RPA1 = {reg_B, reg_C};
+        2'b10: reg_RPA1 = {reg_D, reg_E};
+        2'b11: reg_RPA1 = {reg_H, reg_L};
+    endcase
+
+    case(reg_OPCODE[2:0])
+        3'b000: reg_RPA = 16'h0000;
+        3'b001: reg_RPA = {reg_B, reg_C};
+        3'b010: reg_RPA = {reg_D, reg_E};
+        3'b011: reg_RPA = {reg_H, reg_L};
+        3'b100: reg_RPA = {reg_D, reg_E}; //A+, use alu type 1 for auto inc/dec
+        3'b101: reg_RPA = {reg_H, reg_L}; //A+, use alu type 1 for auto inc/dec
+        3'b110: reg_RPA = {reg_D, reg_E}; //-A, use alu type 1 for auto inc/dec
+        3'b111: reg_RPA = {reg_H, reg_L}; //-A, use alu type 1 for auto inc/dec
+    endcase
+
+    case(reg_OPCODE[2:0])
+        3'b000: reg_RPA2 = 16'h0000;
+        3'b001: reg_RPA2 = 16'h0000;
+        3'b010: reg_RPA2 = 16'h0000;
+        3'b011: reg_RPA2 = {reg_D, reg_E};
+        3'b100: reg_RPA2 = {reg_H, reg_L};
+        3'b101: reg_RPA2 = {reg_H, reg_L};
+        3'b110: reg_RPA2 = {reg_H, reg_L};
+        3'b111: reg_RPA2 = {reg_H, reg_L};
+    endcase
+
+    case(reg_OPCODE[2:0])
+        3'b000: reg_RPA_OFFSET = 16'h0000;
+        3'b001: reg_RPA_OFFSET = 16'h0000;
+        3'b010: reg_RPA_OFFSET = 16'h0000;
+        3'b011: reg_RPA_OFFSET = {8'h00, reg_MDL}; //use alu type 0 to select an addend automatically
+        3'b100: reg_RPA_OFFSET = {8'h00, reg_A}; 
+        3'b101: reg_RPA_OFFSET = {8'h00, reg_B};
+        3'b110: reg_RPA_OFFSET = {reg_EAH, reg_EAL};
+        3'b111: reg_RPA_OFFSET = {8'h00, reg_MDL};
+    endcase
+end
+
+//ALU port A and B
+reg     [15:0]  alu_pa, alu_pb; 
+always (*) begin
+    if(mc_type == MCTYPE0) begin
+        case(mc_sa_dst)
+            SA_DST_R      : alu_pa = {8'h00, reg_R};
+            SA_DST_R2     : alu_pa = {8'h00, reg_R2};
+            SA_DST_R1     : alu_pa = {8'h00, reg_R1};
+            SA_DST_RP2    : alu_pa = reg_RP2;
+            SA_DST_RP     : alu_pa = reg_RP;
+            SA_DST_RP1    : alu_pa = reg_RP1;
+            SA_DST_SR_SR1 : alu_pa = ;
+            SA_DST_SR2    : alu_pa = ;
+            SA_DST_SR3    : alu_pa = ;
+            SA_DST_MDL    : alu_pa = {8'h00, reg_MDL};
+            SA_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
+            SA_DST_MA     : alu_pa = reg_MA;
+            SA_DST_PC     : alu_pa = reg_PC;
+            SA_DST_SP     : alu_pa = reg_SP;
+            SA_DST_A      : alu_pa = {8'h00, reg_A};
+            SA_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
+            SA_DST_C      : alu_pa = {8'h00, reg_C};
+            SA_DST_TEMP   : alu_pa = reg_TEMPH;
+            SA_DST_RPA1   : alu_pa = reg_RPA1;
+            SA_DST_RPA    : alu_pa = reg_RPA;
+            SA_DST_RPA2   : alu_pa = reg_RPA2;
+            default       : alu_pa = 16'h0000;
+        endcase
+
+        case(mc_sb)
+            SB_R          : alu_pb = {8'h00, reg_R};
+            SB_R2         : alu_pb = {8'h00, reg_R2};
+            SB_R1         : alu_pb = {8'h00, reg_R1};
+            SB_RP2        : alu_pb = reg_RP2;
+            SB_RP         : alu_pb = reg_RP;
+            SB_RP1        : alu_pb = reg_RP1;
+            SB_SR_SR1     : alu_pb = ;
+            SB_SR2        : alu_pb = ;
+            SB_SR4        : alu_pb = ;
+            SB_MDH        : alu_pb = {8'h00, reg_MDH};
+            SB_MD         : alu_pb = {reg_MDH, reg_MDL};
+            SB_SP_PUSH    : alu_pb = reg_SP; //alu out: SP-1, ma: SP-1
+            SB_SP_POP     : alu_pb = reg_SP; //alu out: SP+1, ma: SP
+            SB_PC         : alu_pb = reg_PC;
+            SB_A          : alu_pb = {8'h00, reg_A};
+            SB_EA         : alu_pb = {reg_EAH, reg_EAL};
+            SB_ADDR_SOFTI : alu_pb = ;
+            SB_ADDR_V_WA  : alu_pb = ;
+            SB_ADDR_IMM   : alu_pb = ;
+            SB_ADDR_DIR   : alu_pb = ;
+            SB_ADDR_REL_S : alu_pb = ;
+            SB_ADDR_REL_L : alu_pb = ;
+            SB_ADDR_INT   : alu_pb = ;
+            SB_SUB2       : alu_pb = 16'hFFFE;
+            SB_SUB1       : alu_pb = 16'hFFFF;
+            SB_ADD1       : alu_pb = 16'h0001;
+            SB_ADD2       : alu_pb = 16'h0002;
+            SB_TEMP       : alu_pb = reg_TEMP;
+            SB_RPA1       : alu_pb = reg_RPA1;
+            SB_RPA        : alu_pb = reg_RPA;
+            SB_RPA2       : alu_pb = reg_RPA2;
+            SB_OFFSET     : alu_pb = reg_RPA_OFFSET;
+            default       : alu_pb = 16'h0000;
+        endcase
+    end
+    else if(mc_type == MCTYPE1) begin
+
+    end
+end
+
+
+
+
+///////////////////////////////////////////////////////////
+//////  ALU
+////
+
+always @(*) begin
+
+
+end
+
+
+
+///////////////////////////////////////////////////////////
+//////  INTERRUPT HANDLER
+////
+
+
+reg             int_nmi; //nNMI physical pin input, takes maximum 10us to suppress glitch
+reg             int_timer0, int_timer1; //timer 0/1 match interrupt
+reg             int_pint1, int_nint2; //INT1, nINT2 physical pin input, takes 12+2 mcuclk cycles to suppress gluitch
+reg             int_cntr0, int_cntr1; //timer/event counter 0/1 match interrupt
+reg             int_ncntrcin; //falling edge of the timer/event countr input (CI input) or timer output (TO) -> from the datasheet
+reg             int_adc; //adc conversion complete
+reg             int_buffull, int_bufempty; //UART buffer full/empty
+
 
 
 

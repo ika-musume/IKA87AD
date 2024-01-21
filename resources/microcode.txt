@@ -385,7 +385,7 @@ drll, drlr, dsll, dslr
 jmp
 (2)cycle433
 1.nop, 1 cycle, RD3
-3.PC<-MD
+3.PC<-MD, RD4
 
 jb
 (1)cycle4

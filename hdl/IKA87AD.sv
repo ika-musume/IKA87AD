@@ -123,8 +123,8 @@ localparam SB_A          = 5'b01110;
 localparam SB_EA         = 5'b01111;
 localparam SB_ADDR_SOFTI = 5'b10000;
 localparam SB_ADDR_V_WA  = 5'b10001;
-localparam SB_ADDR_IMM   = 5'b10010;
-localparam SB_ADDR_DIR   = 5'b10011;
+localparam SB_ADDR_TA    = 5'b10010;
+localparam SB_ADDR_FA    = 5'b10011;
 localparam SB_ADDR_REL_S = 5'b10100;
 localparam SB_ADDR_REL_L = 5'b10101;
 localparam SB_ADDR_INT   = 5'b10110;
@@ -139,6 +139,7 @@ localparam SB_OFFSET     = 5'b11111;
 
 wire    [4:0]   mc_sb; //microcode type 0, source b
 wire    [3:0]   mc_sa_dst; //microcode type 0, source a
+wire    [1:0]   mc_t0_alusel;
 
 
 //MICROCODE TYPE 1 FIELDS
@@ -152,7 +153,7 @@ localparam SD_PC         = 4'b1000;
 
 wire    [3:0]   mc_sd; //microcode type 1, source d
 wire    [3:0]   mc_sc_dst; //microcode type 1, source c
-
+wire    [3:0]   mc_t1_alusel;
 
 //MICROCODE TYPE 2 FIELDS
 wire    [7:0]   mc_bookkeeping;
@@ -222,6 +223,35 @@ end
 
 
 
+///////////////////////////////////////////////////////////
+//////  INTERRUPT HANDLER
+////
+
+
+reg             int_nmi; //nNMI physical pin input, takes maximum 10us to suppress glitch
+reg             int_timer0, int_timer1; //timer 0/1 match interrupt
+reg             int_pint1, int_nint2; //INT1, nINT2 physical pin input, takes 12+2 mcuclk cycles to suppress gluitch
+reg             int_cntr0, int_cntr1; //timer/event counter 0/1 match interrupt
+reg             int_ncntrcin; //falling edge of the timer/event countr input (CI input) or timer output (TO) -> from the datasheet
+reg             int_adc; //adc conversion complete
+reg             int_buffull, int_bufempty; //UART buffer full/empty
+wire    [2:0]   int_lv;
+
+
+
+reg     [15:0]  int_addr;
+always @(*) begin
+    case(int_lv)
+        3'b000: 16'h0060; //SOFTI
+        3'b001: 16'h0004; //NMI
+        3'b010: 16'h0018; //TIMER
+        3'b011: 16'h0010; //INT PIN
+        3'b100: 16'h0018; //COUNTER RELATED
+        3'b101: 16'h0020; //ADC
+        3'b110: 16'h0028; //SERIAL INTERFACE
+        3'b111: 16'h0000; //not specified
+    endcase
+end
 
 
 
@@ -229,6 +259,8 @@ end
 ///////////////////////////////////////////////////////////
 //////  MICROCODE ENGINE
 ////
+
+reg             skip_check_alu;
 
 
 
@@ -262,13 +294,13 @@ end
         01101: (w) PC
         01110: (w) A
         01111: (b) EA
-        10000: (w) ADDR_SOFTI
+        10000:
         10001: (w) ADDR_V_WA 
-        10010: (w) ADDR_IM    
-        10011: (w) ADDR_DIR  
+        10010: (w) ADDR_TA
+        10011: (w) ADDR_FA   
         10100: (w) ADDR_REL_S
         10101: (w) ADDR_REL_L
-        10110: (w) *ADDR_INT, interrupt address
+        10110: (w) *ADDR_INT, interrupt address, including software interrupt
         10111: (w) -2
         11000: (w) -1
         11001: (w) 1
@@ -461,10 +493,10 @@ wire            reg_MD_swap_input_order = mc_type == MCTYPE3 && mc_conditional[0
 wire            reg_MD_swap_output_order = (mc_type == MCTYPE0 && mc_sb == SB_PC && mc_sa_dst == SA_DST_MD) ||
                                            (mc_type == MCTYPE1 && mc_sd == SD_PC && mc_sc_dst == SC_DST_MD); //swaps MD output order, PC push to stack
 
-
-
-reg     [15:0]  alu_wrdata; //ALU output
-reg     [15:0]  alu_ma_wrdata; //ALU output for the memory address register
+//ALU output
+reg     [15:0]  alu_output; //ALU output
+reg     [15:0]  alu_ma_output; //ALU output for the memory address register
+reg     [15:0]  alu_temp_output; //ALU temp register
 reg             reg_TEMP_wr;
 
 
@@ -555,7 +587,7 @@ always @(posedge emuclk) begin
     else begin
         if(cycle_tick) begin
             //Program Counter load/auto increment conditions
-            if(reg_PC_wr) reg_PC <= alu_wrdata;
+            if(reg_PC_wr) reg_PC <= alu_output;
             else begin
                 if(reg_PC_inc_stop) reg_PC <= reg_PC;
                 else begin
@@ -564,10 +596,10 @@ always @(posedge emuclk) begin
             end
 
             //Stack Pointer load condition
-            if(reg_SP_wr) reg_SP <= alu_wrdata;
+            if(reg_SP_wr) reg_SP <= alu_output;
 
             //Memory Address load/auto inc conditions
-            if(reg_MA_wr) reg_MA <= alu_ma_wrdata;
+            if(reg_MA_wr) reg_MA <= alu_ma_output;
             else begin
                 if(opcode_tick) reg_MA <= reg_PC;
                 else begin
@@ -664,10 +696,10 @@ always @(posedge emuclk) begin
                     reg_MDH <= reg_EAH;
                 end
                 else begin
-                    if(reg_MDL_wr) reg_MDL <= alu_wrdata[7:0];
+                    if(reg_MDL_wr) reg_MDL <= alu_output[7:0];
                     else reg_MDL <= reg_INLATCH[7:0];
 
-                    if(reg_MDH_wr) reg_MDH <= alu_wrdata[15:8];
+                    if(reg_MDH_wr) reg_MDH <= alu_output[15:8];
                     else reg_MDH <= reg_INLATCH[15:8];
                 end
             end
@@ -741,7 +773,7 @@ end
 
 
 ///////////////////////////////////////////////////////////
-//////  READ PORT MULTIPLEXERS
+//////  ALU READ PORT MULTIPLEXERS
 ////
 
 //r addressing
@@ -854,6 +886,8 @@ always @(*) begin
     endcase
 end
 
+
+
 //ALU port A and B
 reg     [15:0]  alu_pa, alu_pb; 
 always (*) begin
@@ -900,13 +934,12 @@ always (*) begin
             SB_PC         : alu_pb = reg_PC;
             SB_A          : alu_pb = {8'h00, reg_A};
             SB_EA         : alu_pb = {reg_EAH, reg_EAL};
-            SB_ADDR_SOFTI : alu_pb = ;
-            SB_ADDR_V_WA  : alu_pb = ;
-            SB_ADDR_IMM   : alu_pb = ;
-            SB_ADDR_DIR   : alu_pb = ;
-            SB_ADDR_REL_S : alu_pb = ;
-            SB_ADDR_REL_L : alu_pb = ;
-            SB_ADDR_INT   : alu_pb = ;
+            SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MD_swap_input_order ? reg_INLATCH[15:8] : reg_INLATCH[7:0]};
+            SB_ADDR_TA    : alu_pb = {8'h00, 2'b10, reg_OPCODE[4:0], 1'b0};
+            SB_ADDR_FA    : alu_pb = {5'b00001, reg_OPCODE[2:0], reg_INLATCH[7:0]};
+            SB_ADDR_REL_S : alu_pb = {{11{reg_OPCODE[5]}}, reg_OPCODE[4:0]}; //sign extension
+            SB_ADDR_REL_L : alu_pb = {{8{reg_OPCODE[0]}}, reg_INLATCH[7:0]};
+            SB_ADDR_INT   : alu_pb = int_addr; //selected externally
             SB_SUB2       : alu_pb = 16'hFFFE;
             SB_SUB1       : alu_pb = 16'hFFFF;
             SB_ADD1       : alu_pb = 16'h0001;
@@ -931,25 +964,46 @@ end
 //////  ALU
 ////
 
-always @(*) begin
+reg             flag_CY, flag_HC;
 
+always @(*) begin
+    //maintain current destination register's data, if the port is not altered
+    alu_output = alu_pa;
+    alu_ma_output = alu_pa;
+    alu_temp_output = alu_pa;.
+
+    //pa = first operand, pb = second operand, like Vwa
+    if(mc_type == MCTYPE0) begin
+        if(mc_t0_alusel == 2'd0) alu_output <= alu_pb; //out<-pb bypass
+        else if(mc_t0_alusel == 2'd1) alu_ma_output <= alu_pa + alu_pb;
+        else begin
+            case(mc_t0_alusel ? {OPCODE[0], OPCODE[6:4]} : {OPCODE[3], OPCODE[6:4]})
+                4'h0: alu_output = alu_pb;                        //MVI(move)
+                4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
+                4'h2: alu_output = alu_pa + alu_pb;               //ADDNC(check skip condition: NO CARRY)
+                4'h3: alu_output = alu_pa + (~alu_pb) + 1;        //SUBNB(check skip condition: NO BORROW; 2's complement)
+                4'h4: alu_output = alu_pa + alu_pb;               //ADD
+                4'h5: alu_output = alu_pa + alu_pb + flag_CY;     //ADD with carry
+                4'h6: alu_output = alu_pa + (~alu_pb) + 1;        //SUB
+                4'h7: alu_output = alu_pa + (~alu_pb) + ~flag_CY; //SUB with borrow
+                4'h8: alu_temp_output = alu_pa & alu_pb;          //AND(bitwise AND)
+                4'h9: alu_temp_output = alu_pa | alu_pb;          //OR(bitwise OR)
+                4'hA: alu_temp_output = alu_pa + (~alu_pb);       //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
+                4'hB: alu_temp_output = alu_pa + (~alu_pb) + 1;   //SLT(skip if less than; check skip condition: BORROW; 2's complement)
+                4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO ZERO)
+                4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: ZERO)
+                4'hE: alu_temp_output = alu_pa + (~alu_pb) + 1;   //SNE(skip on not equal; check skip condition: NO ZERO)
+                4'hF: alu_temp_output = alu_pa + (~alu_pb) + 1;   //SEQ(skip on equal; check skip condition: ZERO)
+            endcase
+        end
+    end
+    else if(mc_type == MCTYPE1) begin
+        if(mc_t1_alusel == )
+    end
 
 end
 
 
-
-///////////////////////////////////////////////////////////
-//////  INTERRUPT HANDLER
-////
-
-
-reg             int_nmi; //nNMI physical pin input, takes maximum 10us to suppress glitch
-reg             int_timer0, int_timer1; //timer 0/1 match interrupt
-reg             int_pint1, int_nint2; //INT1, nINT2 physical pin input, takes 12+2 mcuclk cycles to suppress gluitch
-reg             int_cntr0, int_cntr1; //timer/event counter 0/1 match interrupt
-reg             int_ncntrcin; //falling edge of the timer/event countr input (CI input) or timer output (TO) -> from the datasheet
-reg             int_adc; //adc conversion complete
-reg             int_buffull, int_bufempty; //UART buffer full/empty
 
 
 

@@ -102,7 +102,6 @@ localparam SA_DST_SP     = 5'b01101;
 localparam SA_DST_A      = 5'b00000;
 localparam SA_DST_EA     = 5'b00000;
 localparam SA_DST_C      = 5'b00000;
-localparam SA_DST_TEMP   = 5'b10001;
 localparam SA_DST_RPA1   = 5'b11110;
 localparam SA_DST_RPA2   = 5'b11111;
 
@@ -121,7 +120,6 @@ localparam SB_MD         = 5'b01010;
 localparam SB_PC         = 5'b01101;
 localparam SB_A          = 5'b01110;
 localparam SB_EA         = 5'b01111;
-localparam SB_ADDR_SOFTI = 5'b10000;
 localparam SB_ADDR_V_WA  = 5'b10001;
 localparam SB_ADDR_TA    = 5'b10010;
 localparam SB_ADDR_FA    = 5'b10011;
@@ -160,7 +158,6 @@ wire    [7:0]   mc_bookkeeping;
 
 //MICROCODE TYPE 3 FIELDS
 wire    [9:0]   mc_conditional;
-
 
 
 
@@ -256,6 +253,10 @@ end
 
 
 
+
+
+
+
 ///////////////////////////////////////////////////////////
 //////  MICROCODE ENGINE
 ////
@@ -328,7 +329,7 @@ reg             skip_check_alu;
         01110: (b) A 
         01111: (w) EA
         10000: (b) C 
-        10001: (w) ALU temp register
+        10001:
         10010:
         10011:
         10100:
@@ -372,8 +373,8 @@ reg             skip_check_alu;
     0110: MD_high_byte
     0111: MD_word
     1000: PC
-    1001: PSW
-    1010:
+    1001: SP
+    1010: PSW
     1011:
     1100: 
     1101: 
@@ -405,12 +406,12 @@ reg             skip_check_alu;
     0100: RRD(rotate right digit)
     0101: MUL
     0110: DIV
-    0111: shift operation, OPCODE[4], OPCODE[2]
+    0111: shift operation, OPCODE[7], OPCODE[2], OPCODE[5:4], 
     1000: (-A)push operation: alu out=A-1, ma out=A-1
     1001: (A+)pop operation: alu out=A+1, ma out=A
     1010: rpa auto decrement/increment operation, use opcode field
-    1011: 
-    1100:
+    1011: INC
+    1100: DEC
     1101:
     1110:
     1111:
@@ -531,7 +532,10 @@ reg     [2:0]   reg_MKH; //intrq disable register high; -, -, -, -, -, empty, fu
 
 
 
-
+//
+//  Flags
+//
+reg             flag_Z, flag_SK, flag_CY, flag_HC, flag_L1, flag_L0;
 
 
 
@@ -771,6 +775,16 @@ always @(posedge emuclk) begin
 end
 
 
+///////////////////////////////////////////////////////////
+//////  FLAG GENERATOR
+////
+
+wire            mc_flag_check;
+
+reg             alu_cy_din, alu_hc_din, alu_cy_wr, alu_hc_wr;
+
+
+
 
 ///////////////////////////////////////////////////////////
 //////  ALU READ PORT MULTIPLEXERS
@@ -910,9 +924,7 @@ always (*) begin
             SA_DST_A      : alu_pa = {8'h00, reg_A};
             SA_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
             SA_DST_C      : alu_pa = {8'h00, reg_C};
-            SA_DST_TEMP   : alu_pa = reg_TEMPH;
             SA_DST_RPA1   : alu_pa = reg_RPA1;
-            SA_DST_RPA    : alu_pa = reg_RPA;
             SA_DST_RPA2   : alu_pa = reg_RPA2;
             default       : alu_pa = 16'h0000;
         endcase
@@ -929,8 +941,6 @@ always (*) begin
             SB_SR4        : alu_pb = ;
             SB_MDH        : alu_pb = {8'h00, reg_MDH};
             SB_MD         : alu_pb = {reg_MDH, reg_MDL};
-            SB_SP_PUSH    : alu_pb = reg_SP; //alu out: SP-1, ma: SP-1
-            SB_SP_POP     : alu_pb = reg_SP; //alu out: SP+1, ma: SP
             SB_PC         : alu_pb = reg_PC;
             SB_A          : alu_pb = {8'h00, reg_A};
             SB_EA         : alu_pb = {reg_EAH, reg_EAL};
@@ -946,7 +956,6 @@ always (*) begin
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
             SB_RPA1       : alu_pb = reg_RPA1;
-            SB_RPA        : alu_pb = reg_RPA;
             SB_RPA2       : alu_pb = reg_RPA2;
             SB_OFFSET     : alu_pb = reg_RPA_OFFSET;
             default       : alu_pb = 16'h0000;
@@ -964,41 +973,205 @@ end
 //////  ALU
 ////
 
-reg             flag_CY, flag_HC;
+//
+//  ALU: full adder with nibble, byte, word carry outputs
+//
+
+reg     [15:0]  alu_adder_op0, alu_adder_op1;
+reg             alu_adder_cin, alu_adder_co;
+
+wire    [15:0]  alu_adder_out;
+wire    [4:0]   alu_adder_nibble_lo, alu_adder_nibble_hi;
+wire    [8:0]   alu_adder_byte_high;
+wire            alu_adder_nibble_co = alu_adder_nibble_lo[4];
+wire            alu_adder_byte_co = alu_adder_nibble_hi[4];
+wire            alu_adder_word_co = alu_adder_byte_high[8];
+assign  alu_adder_out[3:0] = alu_adder_op0[3:0] + alu_adder_op1[3:0] + alu_adder_cin
+assign  alu_adder_out[7:4] = alu_adder_op0[7:4] + alu_adder_op1[7:4] + alu_adder_nibble_co;
+assign  alu_adder_out[15:8] = alu_adder_op0[15:8] + alu_adder_op1[15:8] + alu_adder_byte_co;
+
+
+//
+//  ALU: shifter and rotator
+//
+
+reg     [15:0]  alu_shifter;
+reg             alu_shifter_co;
+always @(*) begin
+    alu_shifter = 16'h00;
+    alu_shifter_co = 1'b0;
+
+    if(mc_type == MCTYPE1) if(mc_t1_alusel == 4'h6) begin
+        case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
+            4'b0000: begin alu_shifter[7] = 1'b0; 
+                           alu_shifter[6:0] = alu_pb[7:1];
+                           alu_shifter_co = alu_pb[0]; end //SLRC, skip condition: CARRY
+            4'b0001: ; //no instruction specified
+            4'b0010: begin alu_shifter[7] = 1'b0; 
+                           alu_shifter[6:0] = alu_pb[7:1];
+                           alu_shifter_co = alu_pb[0]; end //SLR
+            4'b0011: begin alu_shifter[7] = flag_CY;
+                           alu_shifter[6:0] = alu_pb[7:1];
+                           alu_shifter_co = alu_pb[0]; end //RLR
+            4'b0100: begin alu_shifter[0] = 1'b0; 
+                           alu_shifter[7:1] = alu_pb[6:0];
+                           alu_shifter_co = alu_pb[7]; end //SLLC, skip condition: CARRY
+            4'b0101: ; //no instruction specified
+            4'b0110: begin alu_shifter[0] = 1'b0; 
+                           alu_shifter[7:1] = alu_pb[6:0];
+                           alu_shifter_co = alu_pb[7]; end //SLL
+            4'b0111: begin alu_shifter[0] = flag_CY;
+                           alu_shifter[7:1] = alu_pb[6:0];
+                           alu_shifter_co = alu_pb[7]; end //RLL
+
+            4'b1000: ; //no instruction specified
+            4'b1001: ; //no instruction specified
+            4'b1010: begin alu_shifter[15] = 1'b0;
+                           alu_shifter[14:0] = alu_pb[15:1];
+                           alu_shifter_co = alu_pb[0]; end //DSLR
+            4'b1011: begin alu_shifter[15] = flag_CY;
+                           alu_shifter[14:0] = alu_pb[15:1];
+                           alu_shifter_co = alu_pb[0]; end //DRLR
+            4'b1100: ; //no instruction specified
+            4'b1101: ; //no instruction specified
+            4'b1110: begin alu_shifter[0] = 1'b0;
+                           alu_shifter[15:1] = alu_pb[14:0];
+                           alu_shifter_co = alu_pb[15]; end //DSLL
+            4'b1111: begin alu_shifter[0] = flag_CY;
+                           alu_shifter[15:1] = alu_pb[14:0];
+                           alu_shifter_co = alu_pb[15]; end //DRLL
+        endcase
+    end
+end
+
+
+//
+//  ALU: MUL/DIV sequencer
+//
+
+
+
+
+
+
+//
+//  ALU: operator
+//
 
 always @(*) begin
     //maintain current destination register's data, if the port is not altered
-    alu_output = alu_pa;
-    alu_ma_output = alu_pa;
-    alu_temp_output = alu_pa;.
+    alu_adder_op0 = 16'h0000; alu_adder_op1 = 16'h0000; alu_adder_cin <= 1'b0; //FA inputs
+    alu_cy_din = flag_CY; alu_hc_din = flag_HC; //flag outputs
+
+    alu_output = alu_pa; //result output
+    alu_ma_output = alu_pa; //Memory Address output
+
+    reg_TEMP_wr = 1'b0; //TEMP register write
+    alu_temp_output = alu_pa; //TEMP register data output
 
     //pa = first operand, pb = second operand, like Vwa
     if(mc_type == MCTYPE0) begin
-        if(mc_t0_alusel == 2'd0) alu_output <= alu_pb; //out<-pb bypass
-        else if(mc_t0_alusel == 2'd1) alu_ma_output <= alu_pa + alu_pb;
+        if(mc_t0_alusel == 2'd0) begin
+            alu_output = alu_pb; //out<-pb bypass
+        end
+        else if(mc_t0_alusel == 2'd1) begin
+            alu_ma_output = alu_adder_out;
+        end
         else begin
-            case(mc_t0_alusel ? {OPCODE[0], OPCODE[6:4]} : {OPCODE[3], OPCODE[6:4]})
+            case(mc_t0_alusel[0] ? {OPCODE[0], OPCODE[6:4]} : {OPCODE[3], OPCODE[6:4]})
                 4'h0: alu_output = alu_pb;                        //MVI(move)
                 4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
-                4'h2: alu_output = alu_pa + alu_pb;               //ADDNC(check skip condition: NO CARRY)
-                4'h3: alu_output = alu_pa + (~alu_pb) + 1;        //SUBNB(check skip condition: NO BORROW; 2's complement)
-                4'h4: alu_output = alu_pa + alu_pb;               //ADD
-                4'h5: alu_output = alu_pa + alu_pb + flag_CY;     //ADD with carry
-                4'h6: alu_output = alu_pa + (~alu_pb) + 1;        //SUB
-                4'h7: alu_output = alu_pa + (~alu_pb) + ~flag_CY; //SUB with borrow
+                4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
+                4'h3: begin alu_output = alu_adder_out;           //SUBNB(check skip condition: NO BORROW; 2's complement)
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end
+                4'h4: begin alu_output = alu_adder_out;           //ADD
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
+                4'h5: begin lu_output = alu_adder_out;            //ADD with carry
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= flag_CY; end
+                4'h6: begin alu_output = alu_adder_out;           //SUB
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end
+                4'h7: begin alu_output = alu_adder_out;           //SUB with borrow
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= ~flag_CY; end
                 4'h8: alu_temp_output = alu_pa & alu_pb;          //AND(bitwise AND)
                 4'h9: alu_temp_output = alu_pa | alu_pb;          //OR(bitwise OR)
-                4'hA: alu_temp_output = alu_pa + (~alu_pb);       //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
-                4'hB: alu_temp_output = alu_pa + (~alu_pb) + 1;   //SLT(skip if less than; check skip condition: BORROW; 2's complement)
+                4'hA: begin alu_temp_output = alu_adder_out;      //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b0; end            
+                4'hB: begin alu_temp_output = alu_adder_out;      //SLT(skip if less than; check skip condition: BORROW; 2's complement)
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end      
                 4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO ZERO)
                 4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: ZERO)
-                4'hE: alu_temp_output = alu_pa + (~alu_pb) + 1;   //SNE(skip on not equal; check skip condition: NO ZERO)
-                4'hF: alu_temp_output = alu_pa + (~alu_pb) + 1;   //SEQ(skip on equal; check skip condition: ZERO)
+                4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO ZERO)
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end    
+                4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: ZERO)
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end    
             endcase
         end
     end
     else if(mc_type == MCTYPE1) begin
-        if(mc_t1_alusel == )
+             if(mc_t1_alusel == 4'h0) alu_output = alu_pb; //out<-pb bypass
+        else if(mc_t1_alusel == 4'h1) begin //2's complement
+            alu_output = alu_adder_out;
+            alu_adder_op0 = 16'h0000; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1;
+        end
+        else if(mc_t1_alusel == 4'h2) begin //DAA, kinda shit
+            alu_output = alu_adder_out;
+            alu_adder_op0 = alu_pa; alu_adder_cin = 1'b0;
+            if(flag_HC) begin
+                if(flag_CY == 1'b0 && reg_A[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                else alu_adder_op1 = 16'h0066;
+            end
+            else begin
+                if(reg_A[3:0] <= 4'h9) begin
+                    if(flag_CY == 1'b0 && reg_A[7:4] <= 4'h9) alu_adder_op1 = 16'h0000;
+                    else alu_adder_op1 = 16'h0060;
+                end
+                else begin
+                    if(flag_CY == 1'b0 && reg_A[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                    else alu_adder_op1 = 16'h0066;
+                end
+            end
+        end
+        else if(mc_t1_alusel == 4'h3) begin //RLD PA=MDin, PB=reg_A
+            alu_output = {alu_pa[3:0], alu_pb[3:0]}; //to MD
+            alu_temp_output = {alu_pb[7:4], alu_pa[7:4]}; //to TEMP->A
+        end
+        else if(mc_t1_alusel == 4'h4) begin //RRD PA=MDin, PB=reg_A
+            alu_output = {alu_pb[3:0], alu_pa[7:4]}; //to MD
+            alu_temp_output = {alu_pb[7:4], alu_pa[3:0]}; //to TEMP->A
+        end
+        else if(mc_t1_alusel == 4'h5) begin //MUL
+
+        end
+        else if(mc_t1_alusel == 4'h6) begin //DIV
+        
+        end
+        else if(mc_t1_alusel == 4'h7) begin //shift 
+            alu_output = alu_shifter;
+        end
+        else if(mc_t1_alusel == 4'h8) begin //PUSH, -ADDR
+            alu_adder_op0 = 16'hFFFF; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
+
+            alu_output = alu_adder_out;
+            alu_ma_output = alu_adder_out;
+        end
+        else if(mc_t1_alusel == 4'h9) begin //PUSH, ADDR+
+            alu_adder_op0 = 16'h0001; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
+
+            alu_output = alu_adder_out;
+            alu_ma_output = alu_pb;
+        end
+        else if(mc_t1_alusel == 4'hA) begin //rpa auto inc/dec
+            if(reg_OPCODE[2]) begin
+                alu_adder_op0 = reg_OPCODE[1] ? 16'hFFFF : 16'h0001;
+            end
+            else alu_adder_op0 = 16'h0000;
+            alu_adder_op1 = alu_pb;
+            alu_adder_cin = 1'b0;
+
+            alu_output = alu_adder_out;
+            alu_ma_output = alu_pb;
+        end
     end
 
 end

@@ -117,7 +117,6 @@ localparam SB_SR2        = 5'b00111;
 localparam SB_SR4        = 5'b01000;
 localparam SB_MDH        = 5'b01001;
 localparam SB_MD         = 5'b01010;
-localparam SB_PC         = 5'b01101;
 localparam SB_A          = 5'b01110;
 localparam SB_EA         = 5'b01111;
 localparam SB_ADDR_V_WA  = 5'b10001;
@@ -128,9 +127,10 @@ localparam SB_ADDR_REL_L = 5'b10101;
 localparam SB_ADDR_INT   = 5'b10110;
 localparam SB_SUB2       = 5'b10111;
 localparam SB_SUB1       = 5'b11000;
-localparam SB_ADD1       = 5'b11001;
-localparam SB_ADD2       = 5'b11010;
-localparam SB_TEMP       = 5'b11011;
+localparam SB_ZERO       = 5'b11001;
+localparam SB_ADD1       = 5'b11010;
+localparam SB_ADD2       = 5'b11011;
+localparam SB_TEMP       = 5'b11100;
 localparam SB_RPA1       = 5'b11101;
 localparam SB_RPA2       = 5'b11110;
 localparam SB_OFFSET     = 5'b11111;
@@ -141,13 +141,29 @@ wire    [1:0]   mc_t0_alusel;
 
 
 //MICROCODE TYPE 1 FIELDS
+
 //source c types
-localparam SC_DST_MA     = 4'b0101;
+localparam SC_DST_R2     = 4'b0000;
+localparam SC_DST_A      = 4'b0001;
+localparam SC_DST_EA     = 4'b0010;
 localparam SC_DST_MDL    = 4'b0011;
 localparam SC_DST_MD     = 4'b0100;
+localparam SC_DST_MA     = 4'b0101;
+localparam SC_DST_PSW    = 4'b0110;
+localparam SC_DST_RPA    = 4'b1111;
 
 //source d types
-localparam SD_PC         = 4'b1000;
+localparam SD_A          = 4'b0000;
+localparam SD_EA         = 4'b0001;
+localparam SD_BC         = 4'b0010;
+localparam SD_DE         = 4'b0011;
+localparam SD_HL         = 4'b0100;
+localparam SD_MDH        = 4'b0101;
+localparam SD_MD         = 4'b0110;
+localparam SD_PC         = 4'b0111;
+localparam SD_SP         = 4'b1000;
+localparam SD_PSW        = 4'b1001;
+localparam SD_RPA        = 4'b1111;
 
 wire    [3:0]   mc_sd; //microcode type 1, source d
 wire    [3:0]   mc_sc_dst; //microcode type 1, source c
@@ -157,8 +173,8 @@ wire    [3:0]   mc_t1_alusel;
 wire    [7:0]   mc_bookkeeping;
 
 //MICROCODE TYPE 3 FIELDS
-wire    [9:0]   mc_conditional;
-
+wire    [9:0]   tional;
+mc_condi
 
 
 
@@ -292,7 +308,7 @@ reg             skip_check_alu;
         01010: (w) MD_word
         01011:
         01100:
-        01101: (w) PC
+        01101:
         01110: (w) A
         01111: (b) EA
         10000:
@@ -304,10 +320,10 @@ reg             skip_check_alu;
         10110: (w) *ADDR_INT, interrupt address, including software interrupt
         10111: (w) -2
         11000: (w) -1
-        11001: (w) 1
-        11010: (w) 2
-        11011: (w) ALU temp register 
-        11100: 
+        11001: (w) 0
+        11010: (w) 1
+        11011: (w) 2
+        11100: (w) ALU temp register 
         11101: (w) *RPA1
         11110: (w) *RPA2
         11111: (w) *RPA_OFFSET, rpa2/rpa3 A, B, EA, byte addend select
@@ -364,17 +380,17 @@ reg             skip_check_alu;
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13:10] source D
-    0000: HL
-    0001: A
-    0010: EA
-    0011: BC
-    0100: DE
-    0101: HL
-    0110: MD_high_byte
-    0111: MD_word
-    1000: PC
-    1001: SP
-    1010: PSW
+    0000: A
+    0001: EA
+    0010: BC
+    0011: DE
+    0100: HL
+    0101: MD_high_byte
+    0110: MD_word
+    0111: PC
+    1000: SP
+    1001: PSW
+    1010:
     1011:
     1100: 
     1101: 
@@ -410,8 +426,8 @@ reg             skip_check_alu;
     1000: (-A)push operation: alu out=A-1, ma out=A-1
     1001: (A+)pop operation: alu out=A+1, ma out=A
     1010: rpa auto decrement/increment operation, use opcode field
-    1011: INC
-    1100: DEC
+    1011:
+    1100:
     1101:
     1110:
     1111:
@@ -452,7 +468,7 @@ reg             skip_check_alu;
         11: 4-state read
 
     4. SPECIAL OPERATION
-    11_X_X_X_XXXX_X_X_X_X_X_?_?_XX
+    11_X_X_X_XXXX_X_X_XX_X_?_?_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
@@ -475,9 +491,15 @@ reg             skip_check_alu;
 //////  MICROCODE/ALU OUTPUT DECODER
 ////
 
+//
+//  Microcode
+//
 
-wire            reg_PC_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC;
+//PC/SP
+wire            reg_PC_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC ||
+                            mc_type == MCTYPE3 && mc_conditional[3];
 wire            reg_SP_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP;
+
 
 //Memory IO related registers, MA=Memory Address, MD=Memory Data
 wire            reg_MA_dec_mode  = mc_type == MCTYPE0 && mc_sb == SB_SP_PUSH && mc_sa_dst == SA_DST_MA;
@@ -491,14 +513,21 @@ wire            reg_MDL_wr  = (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL ||
 wire            reg_MDH_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD);
 wire            reg_MD_swap_input_order = mc_type == MCTYPE3 && mc_conditional[0]; //swaps MD input order, from lo->hi to hi->lo
-wire            reg_MD_swap_output_order = (mc_type == MCTYPE0 && mc_sb == SB_PC && mc_sa_dst == SA_DST_MD) ||
-                                           (mc_type == MCTYPE1 && mc_sd == SD_PC && mc_sc_dst == SC_DST_MD); //swaps MD output order, PC push to stack
+wire            reg_MD_swap_output_order = mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000; //swaps MD output order, push MD to stack
 
-//ALU output
+//ALU control
+wire            alu_mul_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
+wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0110;
+
+//
+//  ALU
+//
+
 reg     [15:0]  alu_output; //ALU output
 reg     [15:0]  alu_ma_output; //ALU output for the memory address register
 reg     [15:0]  alu_temp_output; //ALU temp register
-reg             reg_TEMP_wr;
+reg             alu_muldiv_reg_TEMP_wr, alu_digrot_temp_wr, alu_muldiv_reg_EA_wr;
+wire            reg_TEMP_wr = alu_muldiv_reg_TEMP_wr | alu_digrot_temp_wr;
 
 
 
@@ -535,6 +564,7 @@ reg     [2:0]   reg_MKH; //intrq disable register high; -, -, -, -, -, empty, fu
 //
 //  Flags
 //
+
 reg             flag_Z, flag_SK, flag_CY, flag_HC, flag_L1, flag_L0;
 
 
@@ -775,13 +805,7 @@ always @(posedge emuclk) begin
 end
 
 
-///////////////////////////////////////////////////////////
-//////  FLAG GENERATOR
-////
 
-wire            mc_flag_check;
-
-reg             alu_cy_din, alu_hc_din, alu_cy_wr, alu_hc_wr;
 
 
 
@@ -962,7 +986,42 @@ always (*) begin
         endcase
     end
     else if(mc_type == MCTYPE1) begin
+        case(mc_sc_dst)
+            SC_DST_A      : alu_pa = reg_A;
+            SC_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
+            SC_DST_BC     : alu_pa = {reg_B, reg_C};
+            SC_DST_DE     : alu_pa = {reg_D, reg_E};
+            SC_DST_HL     : alu_pa = {reg_H, reg_L};
+            SC_DST_MDH    : alu_pa = {8'h00, reg_MDH};
+            SC_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
+            SC_DST_PC     : alu_pa = reg_PC;
+            SC_DST_SP     : alu_pa = reg_SP;
+            SC_DST_PSW    : alu_pa = reg_PSW;
+            SC_DST_RPA    : alu_pa = reg_RPA;
+            default       : alu_pa = 16'h0000;
+        endcase
 
+        case(mc_sd)
+            SD_R2         : alu_pb = reg_R2;
+            SD_A          : alu_pb = reg_A;
+            SD_EA         : alu_pb = {reg_EAH, reg_EAL};
+            SD_MDL        : alu_pb = reg_MDL;
+            SD_MD         : alu_pb = {reg_MDH, reg_MDL};
+            SD_MA         : alu_pb = reg_MA;
+            SD_PSW        : alu_pb = reg_PSW;
+            SD_RPA        : alu_pb = reg_RPA;
+            default       : alu_pb = 16'h0000;
+        endcase
+    end
+    else if(mc_type == MCTYPE3) begin
+        if(mc_conditional[3]) begin
+            alu_pa = reg_PC;
+            alu_pb = reg_C == 8'hFF ? 16'h0000 : 16'hFFFF;
+        end
+    end
+    else begin
+        alu_pa = 16'h0000;
+        alu_pb = 16'h0000;
     end
 end
 
@@ -1049,9 +1108,27 @@ end
 //  ALU: MUL/DIV sequencer
 //
 
+reg     [4:0]   alu_muldiv_cntr;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        alu_muldiv_cntr <= 5'd31;
+    end
+    else begin
+        if(cycle_tick) begin
+            if(alu_mul_start) if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd16;
+            else if(alu_div_start) if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd0;
+            else begin
+                if(alu_muldiv_cntr != 5'd31) alu_muldiv_cntr <= alu_muldiv_cntr == 5'd23 || alu_muldiv_cntr == 5'd15 ? 5'd31 : alu_muldiv_cntr + 5'd1;
+                else alu_muldiv_cntr <= 5'd31;
+            end
+        end
+    end
+end
 
-
-
+wire    [15:0]  alu_mul_pb = alu_pb[alu_muldiv_cntr] ? {8'h00, reg_A} << alu_muldiv_cntr : 16'h0000;
+wire    [15:0]  alu_div_pa = reg_TEMP;
+wire    [31:0]  alu_div_out = alu_adder_out[15] ? {{reg_TEMP, reg_EA}[30:0], 1'b0} :
+                                                  {{alu_adder_out, reg_EA}[30:0], 1'b1};
 
 
 //
@@ -1066,8 +1143,11 @@ always @(*) begin
     alu_output = alu_pa; //result output
     alu_ma_output = alu_pa; //Memory Address output
 
-    reg_TEMP_wr = 1'b0; //TEMP register write
+    alu_digrot_temp_wr = 1'b0; //TEMP register write
     alu_temp_output = alu_pa; //TEMP register data output
+
+    alu_muldiv_reg_TEMP_wr = 1'b0;
+    alu_muldiv_reg_EA_wr = 1'b0;
 
     //pa = first operand, pb = second operand, like Vwa
     if(mc_type == MCTYPE0) begin
@@ -1118,16 +1198,16 @@ always @(*) begin
             alu_output = alu_adder_out;
             alu_adder_op0 = alu_pa; alu_adder_cin = 1'b0;
             if(flag_HC) begin
-                if(flag_CY == 1'b0 && reg_A[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                if(flag_CY == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
                 else alu_adder_op1 = 16'h0066;
             end
             else begin
-                if(reg_A[3:0] <= 4'h9) begin
-                    if(flag_CY == 1'b0 && reg_A[7:4] <= 4'h9) alu_adder_op1 = 16'h0000;
+                if(alu_pa[3:0] <= 4'h9) begin
+                    if(flag_CY == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0000;
                     else alu_adder_op1 = 16'h0060;
                 end
                 else begin
-                    if(flag_CY == 1'b0 && reg_A[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                    if(flag_CY == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
                     else alu_adder_op1 = 16'h0066;
                 end
             end
@@ -1135,16 +1215,21 @@ always @(*) begin
         else if(mc_t1_alusel == 4'h3) begin //RLD PA=MDin, PB=reg_A
             alu_output = {alu_pa[3:0], alu_pb[3:0]}; //to MD
             alu_temp_output = {alu_pb[7:4], alu_pa[7:4]}; //to TEMP->A
+
+            alu_digrot_temp_wr = 1'b1;
         end
         else if(mc_t1_alusel == 4'h4) begin //RRD PA=MDin, PB=reg_A
             alu_output = {alu_pb[3:0], alu_pa[7:4]}; //to MD
             alu_temp_output = {alu_pb[7:4], alu_pa[3:0]}; //to TEMP->A
-        end
-        else if(mc_t1_alusel == 4'h5) begin //MUL
 
+            alu_digrot_temp_wr = 1'b1;
+        end
+        else if(mc_t1_alusel == 4'h5) begin //MUL pa=EA, pb=r2
+            alu_output = 16'h0000; //reset EA
         end
         else if(mc_t1_alusel == 4'h6) begin //DIV
-        
+            alu_output = {alu_pa[14:0], 1'b0};
+            alu_temp_output = 15'd0, alu_pa[15];
         end
         else if(mc_t1_alusel == 4'h7) begin //shift 
             alu_output = alu_shifter;
@@ -1155,7 +1240,7 @@ always @(*) begin
             alu_output = alu_adder_out;
             alu_ma_output = alu_adder_out;
         end
-        else if(mc_t1_alusel == 4'h9) begin //PUSH, ADDR+
+        else if(mc_t1_alusel == 4'h9) begin //POP, ADDR+
             alu_adder_op0 = 16'h0001; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
 
             alu_output = alu_adder_out;
@@ -1173,11 +1258,46 @@ always @(*) begin
             alu_ma_output = alu_pb;
         end
     end
+    else if(mc_type == MCTYPE3) begin
+        if(mc_conditional[3]) begin
+            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0;
 
+            alu_output = alu_adder_out;
+        end
+    end
+
+    if(alu_muldiv_cntr != 5'd31) begin
+        if(alu_muldiv_cntr[4]) begin //multiply
+            alu_muldiv_reg_EA_wr = 1'b1;
+
+            alu_adder_op0 = alu_pa; //reg EA
+            alu_adder_op1 = alu_mul_pb; //A * r2, shifted and masked
+            alu_adder_cin = 1'b0;
+
+            alu_output = alu_adder_out;
+        end
+        else begin
+            alu_muldiv_reg_TEMP_wr = 1'b1;
+            alu_muldiv_reg_EA_wr = 1'b1;
+
+            alu_adder_op0 = alu_div_pa  //reg EA
+            alu_adder_op1 = ~alu_pb; //-r2
+            alu_adder_cin = 1'b1;
+
+            alu_output = alu_div_out[15:0];
+            alu_temp_output = alu_div_out[31:16];
+        end
+    end
 end
 
 
 
+
+///////////////////////////////////////////////////////////
+//////  FLAG GENERATOR
+////
+
+reg             alu_cy_din, alu_hc_din, alu_cy_wr, alu_hc_wr;
 
 
 

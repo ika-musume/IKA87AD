@@ -170,11 +170,10 @@ wire    [3:0]   mc_sc_dst; //microcode type 1, source c
 wire    [3:0]   mc_t1_alusel;
 
 //MICROCODE TYPE 2 FIELDS
-wire    [7:0]   mc_bookkeeping;
+wire    [15:0]   mc_bookkeeping;
 
 //MICROCODE TYPE 3 FIELDS
-wire    [9:0]   tional;
-mc_condi
+wire    [15:0]   mc_conditional;
 
 
 
@@ -255,14 +254,14 @@ wire    [2:0]   int_lv;
 reg     [15:0]  int_addr;
 always @(*) begin
     case(int_lv)
-        3'b000: 16'h0060; //SOFTI
-        3'b001: 16'h0004; //NMI
-        3'b010: 16'h0018; //TIMER
-        3'b011: 16'h0010; //INT PIN
-        3'b100: 16'h0018; //COUNTER RELATED
-        3'b101: 16'h0020; //ADC
-        3'b110: 16'h0028; //SERIAL INTERFACE
-        3'b111: 16'h0000; //not specified
+        3'b000: int_addr = 16'h0060; //SOFTI
+        3'b001: int_addr = 16'h0004; //NMI
+        3'b010: int_addr = 16'h0018; //TIMER
+        3'b011: int_addr = 16'h0010; //INT PIN
+        3'b100: int_addr = 16'h0018; //COUNTER RELATED
+        3'b101: int_addr = 16'h0020; //ADC
+        3'b110: int_addr = 16'h0028; //SERIAL INTERFACE
+        3'b111: int_addr = 16'h0000; //not specified
     endcase
 end
 
@@ -358,8 +357,8 @@ reg             skip_check_alu;
         11011: 
         11100: 
         11101: 
-        11110: (w)RPA1, for rpa double increment
-        11111: (w)RPA2      
+        11110: 
+        11111: 
     D[3:2] ALU operation type:
         00: bypass(source2 -> source1)
         01: add
@@ -426,8 +425,8 @@ reg             skip_check_alu;
     1000: (-A)push operation: alu out=A-1, ma out=A-1
     1001: (A+)pop operation: alu out=A+1, ma out=A
     1010: rpa auto decrement/increment operation, use opcode field
-    1011:
-    1100:
+    1011: INC +0x01
+    1100: DEC +0xFF
     1101:
     1110:
     1111:
@@ -492,17 +491,115 @@ reg             skip_check_alu;
 ////
 
 //
+//  ALU
+//
+
+reg     [15:0]  alu_output; //ALU output
+reg     [15:0]  alu_ma_output; //ALU output for the memory address register
+reg     [15:0]  alu_temp_output; //ALU temp register
+reg             alu_muldiv_reg_TEMP_wr, alu_digrot_TEMP_wr, alu_muldiv_reg_EA_wr;
+wire            reg_TEMP_wr = alu_muldiv_reg_TEMP_wr | alu_digrot_TEMP_wr;
+
+
+//
 //  Microcode
 //
+
+//GPR write
+wire    [2:0]   r_addr = reg_OPCODE[2:0];
+wire    [1:0]   r2_addr = reg_OPCODE[1:0];
+wire    [2:0]   r1_addr = reg_OPCODE[2:0];
+wire    [2:0]   rp2_addr = reg_OPCODE[6:4];
+wire    [1:0]   rp_addr = reg_OPCODE[5:4];
+wire    [2:0]   rp1_addr = reg_OPCODE[2:0];
+wire    [1:0]   rpa_incdec_addr = {reg_OPCODE[2], reg_OPCODE[0]};
+
+wire            reg_EAL_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ||                      //direct designation
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA ||                      //direct designation
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd1 || //rp1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd4 || //rp2 word
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd4 || //rp1 word
+                             alu_muldiv_reg_EA_wr;
+
+wire            reg_EAH_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ||                      //direct designation
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA ||                      //direct designation
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd0 || //r1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd4 || //rp2 word
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd4 || //rp1 word
+                             alu_muldiv_reg_EA_wr;
+                             
+wire            reg_V_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd0 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd0;   //rp1 word
+
+wire            reg_A_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_A ||                       //direct designation
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_A ||                       //direct designation
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd1 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd1 || //r2 byte(mc0)
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd1 || //r2 byte(mc1)
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd0;   //rp1 word
+
+wire            reg_B_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd2 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd2 || //r2 byte(mc0)
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd2 || //r2 byte(mc1)
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd2 || //r1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1 || //rp2 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1 || //rp byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1;   //rp1 byte
+
+wire            reg_C_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_C ||                       //direct designation
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd3 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd3 || //r2 byte(mc0)
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd3 || //r2 byte(mc1)
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd3 || //r1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1 || //rp2 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1 || //rp byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1;   //rp1 byte
+
+wire            reg_D_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd4 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd4 || //r2 byte(mc0)
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd4 || //r2 byte(mc1)
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd4 || //r1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2 || //rp2 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2 || //rp byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2 || //rp1 byte
+                             mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2;    //rpa auto inc/dec condition
+
+wire            reg_E_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd5 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd5 || //r2 byte(mc0)
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd5 || //r2 byte(mc1)
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd5 || //r1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2 || //rp2 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2 || //rp byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2 || //rp1 byte
+                             mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2;    //rpa auto inc/dec condition
+
+wire            reg_H_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd6 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd6 || //r2 byte(mc0)
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd6 || //r2 byte(mc1)
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd6 || //r1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3 || //rp2 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3 || //rp byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3 || //rp1 byte
+                             mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3;    //rpa auto inc/dec condition
+
+wire            reg_L_wr   = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd7 || //r byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd7 || //r2 byte(mc0)
+                             mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd7 || //r2 byte(mc1)
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd7 || //r1 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3 || //rp2 byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3 || //rp byte
+                             mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3 || //rp1 byte
+                             mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3;    //rpa auto inc/dec condition
+
+wire            reg_wr_hilo = mc_sa_dst == SA_DST_RP2 || mc_sa_dst == SA_DST_RP || mc_sa_dst == SA_DST_RP1 || mc_sc_dst == SC_DST_RPA;
 
 //PC/SP
 wire            reg_PC_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC ||
                             mc_type == MCTYPE3 && mc_conditional[3];
 wire            reg_SP_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP;
 
-
 //Memory IO related registers, MA=Memory Address, MD=Memory Data
-wire            reg_MA_dec_mode  = mc_type == MCTYPE0 && mc_sb == SB_SP_PUSH && mc_sa_dst == SA_DST_MA;
+wire            reg_MA_dec_mode = mc_type == MCTYPE1 && mc_t1_alusel == 4'h8;
 wire            reg_MA_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MA) ||
                               (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA);
 
@@ -519,15 +616,7 @@ wire            reg_MD_swap_output_order = mc_type == MCTYPE1 && mc_sc_dst == SC
 wire            alu_mul_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
 wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0110;
 
-//
-//  ALU
-//
 
-reg     [15:0]  alu_output; //ALU output
-reg     [15:0]  alu_ma_output; //ALU output for the memory address register
-reg     [15:0]  alu_temp_output; //ALU temp register
-reg             alu_muldiv_reg_TEMP_wr, alu_digrot_temp_wr, alu_muldiv_reg_EA_wr;
-wire            reg_TEMP_wr = alu_muldiv_reg_TEMP_wr | alu_digrot_temp_wr;
 
 
 
@@ -538,15 +627,78 @@ wire            reg_TEMP_wr = alu_muldiv_reg_TEMP_wr | alu_digrot_temp_wr;
 /*
     TODO
     인터럽트 샘플링 시 RD4 3사이클(12 x mcupcen = 800ns)동안 신호가 유지되어야함, 2 x mcupcen동안 뭔가 시프트
-
-    RPA auto increment랑 push랑 pop은 ALU2로 넘겼으니 그거 작업하기
 */
 
 //
 //  General purpose registers
 //
 
-reg     [7:0]   reg_EAH, reg_EAL, reg_V, reg_A, reg_B, reg_C, reg_D, reg_E, reg_H, reg_L [0:1];
+//register pair select switch
+reg             flag_EXX, flag_EXA, flag_EXH;
+wire            sel_BCDE = flag_EXX;
+wire            sel_VAEA = flag_EXA;
+wire            sel_HL = flag_EXX ^ flag_EXH;
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        flag_EXX <= 1'b0;
+        flag_EXA <= 1'b0;
+        flag_EXH <= 1'b0;
+    end
+    else begin
+        if(mc_type == MCTYPE2 && mc_bookkeeping[9]) flag_EXX <= ~flag_EXX;
+        if(mc_type == MCTYPE2 && mc_bookkeeping[8]) flag_EXA <= ~flag_EXA;
+        if(mc_type == MCTYPE2 && mc_bookkeeping[7]) flag_EXH <= ~flag_EXH;
+    end
+end
+
+//register pairs and write control
+
+reg     [7:0]   regpair_EAH, regpair_EAL, regpair_V, regpair_A, regpair_B, regpair_C, regpair_D, regpair_E, regpair_H, regpair_L [0:1];
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        regpair_EAH[0] <= 8'h00; regpair_EAH[1] <= 8'h00;
+        regpair_EAL[0] <= 8'h00; regpair_EAL[1] <= 8'h00;
+        regpair_V[0] <= 8'h00; regpair_V[1] <= 8'h00;
+        regpair_A[0] <= 8'h00; regpair_A[1] <= 8'h00;
+        regpair_B[0] <= 8'h00; regpair_B[1] <= 8'h00;
+        regpair_C[0] <= 8'h00; regpair_C[1] <= 8'h00;
+        regpair_D[0] <= 8'h00; regpair_D[1] <= 8'h00;
+        regpair_E[0] <= 8'h00; regpair_E[1] <= 8'h00;
+        regpair_H[0] <= 8'h00; regpair_H[1] <= 8'h00;
+        regpair_L[0] <= 8'h00; regpair_L[1] <= 8'h00;
+    end
+    else begin
+        if(reg_EAH_wr) regpair_EAH[sel_VAEA] <= alu_output[15:8];
+        if(reg_EAL_wr) regpair_EAL[sel_VAEA] <= alu_output[7:0];
+        if(reg_V_wr)   regpair_V[sel_VAEA]   <= reg_wr_hilo ? alu_output[15:8] : alu_output[7:0];
+        if(reg_A_wr)   regpair_A[sel_VAEA]   <= alu_output[7:0];
+        if(reg_B_wr)   regpair_B[sel_BCDE]   <= reg_wr_hilo ? alu_output[15:8] : alu_output[7:0];
+        if(reg_C_wr)   regpair_C[sel_BCDE]   <= alu_output[7:0];
+        if(reg_D_wr)   regpair_D[sel_BCDE]   <= reg_wr_hilo ? alu_output[15:8] : alu_output[7:0];
+        if(reg_E_wr)   regpair_E[sel_BCDE]   <= alu_output[7:0];
+        if(reg_H_wr)   regpair_H[sel_HL]     <= reg_wr_hilo ? alu_output[15:8] : alu_output[7:0];
+        if(reg_L_wr)   regpair_L[sel_HL]     <= alu_output[7:0];
+    end
+end
+
+//register pair output selectors
+wire    [7:0]   reg_EAH = regpair_EAH[sel_VAEA];
+wire    [7:0]   reg_EAL = regpair_EAL[sel_VAEA]; 
+wire    [7:0]   reg_V = regpair_V[sel_VAEA]; 
+wire    [7:0]   reg_A = regpair_A[sel_VAEA]; 
+wire    [7:0]   reg_B = regpair_B[sel_BCDE]; 
+wire    [7:0]   reg_C = regpair_C[sel_BCDE]; 
+wire    [7:0]   reg_D = regpair_D[sel_BCDE]; 
+wire    [7:0]   reg_E = regpair_E[sel_BCDE]; 
+wire    [7:0]   reg_H = regpair_H[sel_HL]; 
+wire    [7:0]   reg_L = regpair_L[sel_HL];
+
+
+//
+//  Arbitrarily made registers: unsure the original chip has them
+//
+
 reg     [15:0]  reg_INLATCH; //inlatch for data sampling
 reg     [7:0]   reg_MDH, reg_MDL; //byte [15:8], word[15:0]
 reg     [15:0]  reg_TEMP;
@@ -560,13 +712,12 @@ reg     [7:0]   reg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, 
 reg     [2:0]   reg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
 
 
-
 //
 //  Flags
 //
 
 reg             flag_Z, flag_SK, flag_CY, flag_HC, flag_L1, flag_L0;
-
+wire    [7:0]   reg_PSW = {1'b1, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b0, flag_CY};
 
 
 //
@@ -581,7 +732,6 @@ localparam MA = 2'b1;
 reg             address_source_sel;
 reg             reg_PC_inc_stop, reg_MA_inc_ndec;
 reg     [15:0]  memory_access_address;
-
 
 //this block defines the operation of the PC/MA registers
 always @(posedge emuclk) begin
@@ -816,7 +966,7 @@ end
 
 //r addressing
 reg     [7:0]   reg_R, reg_R2, reg_R1;
-always (*) begin
+always @(*) begin
     case(reg_OPCODE[2:0])
         3'b000: reg_R = reg_V;
         3'b001: reg_R = reg_A;
@@ -849,7 +999,7 @@ end
 
 //rp addressing
 reg     [15:0]   reg_RP2, reg_RP, reg_RP1;
-always (*) begin
+always @(*) begin
     case(reg_OPCODE[6:4])
         3'b000: reg_RP2 = reg_SP;
         3'b001: reg_RP2 = {reg_B, reg_C};
@@ -881,7 +1031,7 @@ always (*) begin
 end
 
 //rpa addressing
-reg     [15:0]   reg_RPA1, reg_RPA, reg_RPA2, reg_RPA_OFFSET;
+reg     [15:0]   reg_RPA1, reg_RPA, reg_RPA2, reg_RPA2_OFFSET;
 always @(*) begin
     case(reg_OPCODE[1:0])
         2'b00: reg_RPA1 = 16'h0000;
@@ -890,6 +1040,7 @@ always @(*) begin
         2'b11: reg_RPA1 = {reg_H, reg_L};
     endcase
 
+    //rpa, including auto inc/dec
     case(reg_OPCODE[2:0])
         3'b000: reg_RPA = 16'h0000;
         3'b001: reg_RPA = {reg_B, reg_C};
@@ -901,6 +1052,7 @@ always @(*) begin
         3'b111: reg_RPA = {reg_H, reg_L}; //-A, use alu type 1 for auto inc/dec
     endcase
 
+    //rpa2, +byte, +A, +B, +EA only
     case(reg_OPCODE[2:0])
         3'b000: reg_RPA2 = 16'h0000;
         3'b001: reg_RPA2 = 16'h0000;
@@ -912,15 +1064,16 @@ always @(*) begin
         3'b111: reg_RPA2 = {reg_H, reg_L};
     endcase
 
+    //rpa2 addend select
     case(reg_OPCODE[2:0])
-        3'b000: reg_RPA_OFFSET = 16'h0000;
-        3'b001: reg_RPA_OFFSET = 16'h0000;
-        3'b010: reg_RPA_OFFSET = 16'h0000;
-        3'b011: reg_RPA_OFFSET = {8'h00, reg_MDL}; //use alu type 0 to select an addend automatically
-        3'b100: reg_RPA_OFFSET = {8'h00, reg_A}; 
-        3'b101: reg_RPA_OFFSET = {8'h00, reg_B};
-        3'b110: reg_RPA_OFFSET = {reg_EAH, reg_EAL};
-        3'b111: reg_RPA_OFFSET = {8'h00, reg_MDL};
+        3'b000: reg_RPA2_OFFSET = 16'h0000;
+        3'b001: reg_RPA2_OFFSET = 16'h0000;
+        3'b010: reg_RPA2_OFFSET = 16'h0000;
+        3'b011: reg_RPA2_OFFSET = {8'h00, reg_MDL}; //use alu type 0 to select an addend automatically
+        3'b100: reg_RPA2_OFFSET = {8'h00, reg_A}; 
+        3'b101: reg_RPA2_OFFSET = {8'h00, reg_B};
+        3'b110: reg_RPA2_OFFSET = {reg_EAH, reg_EAL};
+        3'b111: reg_RPA2_OFFSET = {8'h00, reg_MDL};
     endcase
 end
 
@@ -928,7 +1081,7 @@ end
 
 //ALU port A and B
 reg     [15:0]  alu_pa, alu_pb; 
-always (*) begin
+always @(*) begin
     if(mc_type == MCTYPE0) begin
         case(mc_sa_dst)
             SA_DST_R      : alu_pa = {8'h00, reg_R};
@@ -937,9 +1090,9 @@ always (*) begin
             SA_DST_RP2    : alu_pa = reg_RP2;
             SA_DST_RP     : alu_pa = reg_RP;
             SA_DST_RP1    : alu_pa = reg_RP1;
-            SA_DST_SR_SR1 : alu_pa = ;
-            SA_DST_SR2    : alu_pa = ;
-            SA_DST_SR3    : alu_pa = ;
+            SA_DST_SR_SR1 : alu_pa = 16'h0000; //to be fixed
+            SA_DST_SR2    : alu_pa = 16'h0000; //to be fixed
+            SA_DST_SR3    : alu_pa = 16'h0000; //to be fixed
             SA_DST_MDL    : alu_pa = {8'h00, reg_MDL};
             SA_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
             SA_DST_MA     : alu_pa = reg_MA;
@@ -960,12 +1113,11 @@ always (*) begin
             SB_RP2        : alu_pb = reg_RP2;
             SB_RP         : alu_pb = reg_RP;
             SB_RP1        : alu_pb = reg_RP1;
-            SB_SR_SR1     : alu_pb = ;
-            SB_SR2        : alu_pb = ;
-            SB_SR4        : alu_pb = ;
+            SB_SR_SR1     : alu_pb = 16'h0000; //to be fixed
+            SB_SR2        : alu_pb = 16'h0000; //to be fixed
+            SB_SR4        : alu_pb = 16'h0000; //to be fixed
             SB_MDH        : alu_pb = {8'h00, reg_MDH};
             SB_MD         : alu_pb = {reg_MDH, reg_MDL};
-            SB_PC         : alu_pb = reg_PC;
             SB_A          : alu_pb = {8'h00, reg_A};
             SB_EA         : alu_pb = {reg_EAH, reg_EAL};
             SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MD_swap_input_order ? reg_INLATCH[15:8] : reg_INLATCH[7:0]};
@@ -976,38 +1128,39 @@ always (*) begin
             SB_ADDR_INT   : alu_pb = int_addr; //selected externally
             SB_SUB2       : alu_pb = 16'hFFFE;
             SB_SUB1       : alu_pb = 16'hFFFF;
+            SB_ZERO       : alu_pb = 16'h0000;
             SB_ADD1       : alu_pb = 16'h0001;
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
             SB_RPA1       : alu_pb = reg_RPA1;
             SB_RPA2       : alu_pb = reg_RPA2;
-            SB_OFFSET     : alu_pb = reg_RPA_OFFSET;
+            SB_OFFSET     : alu_pb = reg_RPA2_OFFSET;
             default       : alu_pb = 16'h0000;
         endcase
     end
     else if(mc_type == MCTYPE1) begin
         case(mc_sc_dst)
+            SC_DST_R2     : alu_pa = {8'h00, reg_R2};
             SC_DST_A      : alu_pa = reg_A;
             SC_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
-            SC_DST_BC     : alu_pa = {reg_B, reg_C};
-            SC_DST_DE     : alu_pa = {reg_D, reg_E};
-            SC_DST_HL     : alu_pa = {reg_H, reg_L};
-            SC_DST_MDH    : alu_pa = {8'h00, reg_MDH};
+            SC_DST_MDL    : alu_pa = {8'h00, reg_MDL};
             SC_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
-            SC_DST_PC     : alu_pa = reg_PC;
-            SC_DST_SP     : alu_pa = reg_SP;
+            SC_DST_MA     : alu_pa = reg_MA;
             SC_DST_PSW    : alu_pa = reg_PSW;
             SC_DST_RPA    : alu_pa = reg_RPA;
             default       : alu_pa = 16'h0000;
         endcase
 
         case(mc_sd)
-            SD_R2         : alu_pb = reg_R2;
             SD_A          : alu_pb = reg_A;
             SD_EA         : alu_pb = {reg_EAH, reg_EAL};
-            SD_MDL        : alu_pb = reg_MDL;
+            SD_BC         : alu_pb = {reg_B, reg_C};
+            SD_DE         : alu_pb = {reg_D, reg_H};
+            SD_HL         : alu_pb = {reg_H, reg_L};
+            SD_MDH        : alu_pb = {8'h00, reg_MDH};
             SD_MD         : alu_pb = {reg_MDH, reg_MDL};
-            SD_MA         : alu_pb = reg_MA;
+            SD_PC         : alu_pb = reg_PC;
+            SD_SP         : alu_pb = reg_SP;
             SD_PSW        : alu_pb = reg_PSW;
             SD_RPA        : alu_pb = reg_RPA;
             default       : alu_pb = 16'h0000;
@@ -1045,7 +1198,8 @@ wire    [8:0]   alu_adder_byte_high;
 wire            alu_adder_nibble_co = alu_adder_nibble_lo[4];
 wire            alu_adder_byte_co = alu_adder_nibble_hi[4];
 wire            alu_adder_word_co = alu_adder_byte_high[8];
-assign  alu_adder_out[3:0] = alu_adder_op0[3:0] + alu_adder_op1[3:0] + alu_adder_cin
+reg             alu_adder_borrow_mode;
+assign  alu_adder_out[3:0] = alu_adder_op0[3:0] + alu_adder_op1[3:0] + alu_adder_cin;
 assign  alu_adder_out[7:4] = alu_adder_op0[7:4] + alu_adder_op1[7:4] + alu_adder_nibble_co;
 assign  alu_adder_out[15:8] = alu_adder_op0[15:8] + alu_adder_op1[15:8] + alu_adder_byte_co;
 
@@ -1127,8 +1281,8 @@ end
 
 wire    [15:0]  alu_mul_pb = alu_pb[alu_muldiv_cntr] ? {8'h00, reg_A} << alu_muldiv_cntr : 16'h0000;
 wire    [15:0]  alu_div_pa = reg_TEMP;
-wire    [31:0]  alu_div_out = alu_adder_out[15] ? {{reg_TEMP, reg_EA}[30:0], 1'b0} :
-                                                  {{alu_adder_out, reg_EA}[30:0], 1'b1};
+wire    [31:0]  alu_div_out = alu_adder_out[15] ? {{reg_TEMP, {reg_EAH, reg_EAL}}[30:0], 1'b0} :
+                                                  {{alu_adder_out, {reg_EAH, reg_EAL}}[30:0], 1'b1};
 
 
 //
@@ -1138,12 +1292,12 @@ wire    [31:0]  alu_div_out = alu_adder_out[15] ? {{reg_TEMP, reg_EA}[30:0], 1'b
 always @(*) begin
     //maintain current destination register's data, if the port is not altered
     alu_adder_op0 = 16'h0000; alu_adder_op1 = 16'h0000; alu_adder_cin <= 1'b0; //FA inputs
-    alu_cy_din = flag_CY; alu_hc_din = flag_HC; //flag outputs
+    alu_adder_borrow_mode = 1'b0;
 
     alu_output = alu_pa; //result output
     alu_ma_output = alu_pa; //Memory Address output
 
-    alu_digrot_temp_wr = 1'b0; //TEMP register write
+    alu_digrot_TEMP_wr = 1'b0; //TEMP register write
     alu_temp_output = alu_pa; //TEMP register data output
 
     alu_muldiv_reg_TEMP_wr = 1'b0;
@@ -1158,33 +1312,40 @@ always @(*) begin
             alu_ma_output = alu_adder_out;
         end
         else begin
-            case(mc_t0_alusel[0] ? {OPCODE[0], OPCODE[6:4]} : {OPCODE[3], OPCODE[6:4]})
+            case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
                 4'h0: alu_output = alu_pb;                        //MVI(move)
                 4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
                 4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
                 4'h3: begin alu_output = alu_adder_out;           //SUBNB(check skip condition: NO BORROW; 2's complement)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_borrow_mode = 1'b1; end
                 4'h4: begin alu_output = alu_adder_out;           //ADD
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
-                4'h5: begin lu_output = alu_adder_out;            //ADD with carry
+                4'h5: begin alu_output = alu_adder_out;           //ADD with carry
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= flag_CY; end
                 4'h6: begin alu_output = alu_adder_out;           //SUB
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_borrow_mode = 1'b1; end
                 4'h7: begin alu_output = alu_adder_out;           //SUB with borrow
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= ~flag_CY; end
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= flag_CY; 
+                            alu_adder_borrow_mode = 1'b1; end
                 4'h8: alu_temp_output = alu_pa & alu_pb;          //AND(bitwise AND)
                 4'h9: alu_temp_output = alu_pa | alu_pb;          //OR(bitwise OR)
                 4'hA: begin alu_temp_output = alu_adder_out;      //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b0; end            
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b0; 
+                            alu_adder_borrow_mode = 1'b1; end
                 4'hB: begin alu_temp_output = alu_adder_out;      //SLT(skip if less than; check skip condition: BORROW; 2's complement)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end      
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1;
+                            alu_adder_borrow_mode = 1'b1; end
                 4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO ZERO)
                 4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: ZERO)
                 4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO ZERO)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end    
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_borrow_mode = 1'b1; end
                 4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: ZERO)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; end    
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_borrow_mode = 1'b1; end
             endcase
         end
     end
@@ -1216,20 +1377,20 @@ always @(*) begin
             alu_output = {alu_pa[3:0], alu_pb[3:0]}; //to MD
             alu_temp_output = {alu_pb[7:4], alu_pa[7:4]}; //to TEMP->A
 
-            alu_digrot_temp_wr = 1'b1;
+            alu_digrot_TEMP_wr = 1'b1;
         end
         else if(mc_t1_alusel == 4'h4) begin //RRD PA=MDin, PB=reg_A
             alu_output = {alu_pb[3:0], alu_pa[7:4]}; //to MD
             alu_temp_output = {alu_pb[7:4], alu_pa[3:0]}; //to TEMP->A
 
-            alu_digrot_temp_wr = 1'b1;
+            alu_digrot_TEMP_wr = 1'b1;
         end
         else if(mc_t1_alusel == 4'h5) begin //MUL pa=EA, pb=r2
             alu_output = 16'h0000; //reset EA
         end
         else if(mc_t1_alusel == 4'h6) begin //DIV
             alu_output = {alu_pa[14:0], 1'b0};
-            alu_temp_output = 15'd0, alu_pa[15];
+            alu_temp_output = {15'd0, alu_pa[15]};
         end
         else if(mc_t1_alusel == 4'h7) begin //shift 
             alu_output = alu_shifter;
@@ -1257,6 +1418,17 @@ always @(*) begin
             alu_output = alu_adder_out;
             alu_ma_output = alu_pb;
         end
+        else if(mc_t1_alusel == 4'hB) begin //INC
+            alu_adder_op0 = alu_pa; alu_adder_op1 = 16'h0001; alu_adder_cin = 1'b0;
+
+            alu_output = alu_adder_out;
+        end
+        else if(mc_t1_alusel == 4'hC) begin //DEC
+            alu_adder_op0 = alu_pa; alu_adder_op1 = 16'hFFFF; alu_adder_cin = 1'b1;
+            alu_adder_borrow_mode = 1'b1;
+
+            alu_output = alu_adder_out;
+        end
     end
     else if(mc_type == MCTYPE3) begin
         if(mc_conditional[3]) begin
@@ -1280,7 +1452,7 @@ always @(*) begin
             alu_muldiv_reg_TEMP_wr = 1'b1;
             alu_muldiv_reg_EA_wr = 1'b1;
 
-            alu_adder_op0 = alu_div_pa  //reg EA
+            alu_adder_op0 = alu_div_pa;  //reg EA
             alu_adder_op1 = ~alu_pb; //-r2
             alu_adder_cin = 1'b1;
 
@@ -1297,8 +1469,16 @@ end
 //////  FLAG GENERATOR
 ////
 
-reg             alu_cy_din, alu_hc_din, alu_cy_wr, alu_hc_wr;
-
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        flag_Z <= 1'b0;
+        flag_SK <= 1'b0;
+        flag_CY <= 1'b0;
+        flag_HC <= 1'b0;
+        flag_L1 <= 1'b0;
+        flag_L0 <= 1'b0;
+    end
+end
 
 
 

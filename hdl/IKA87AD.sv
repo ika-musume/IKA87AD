@@ -46,9 +46,25 @@ wire            mrst_n = i_RESET_n;
 //////  OPCODE DECODER
 ////
 
-reg     [2:0]   opcode_page;
-reg     [7:0]   reg_OPCODE;
-reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
+//include mnemonic list
+`include "IKA87AD_mnemonics.sv"
+
+reg     [2:0]   opcode_page; //page indicator
+reg     [7:0]   reg_OPCODE; //opcode register
+wire    [7:0]   op = reg_OPCODE; //alias signal
+reg     [7:0]   reg_FULL_OPCODE_debug[0:3]; //wtf
+
+//microcode decoder
+reg     [7:0]   addr; //microcode rom address
+always @(*) begin
+    if(opcode_page == 3'd0) begin
+        if(op == 8'h00 || op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) addr = NOP;
+    end
+end
+
+
+
+
 
 
 
@@ -59,7 +75,9 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3];
 //////  MICROCODE OUTPUT SIGNALS
 ////
 
-wire    [17:0]  mc_output;
+wire            mc_read_tick; //BRAM read tick
+reg     [17:0]  mc_rom; //ROM output, registered
+reg     [17:0]  mc_output; //combinational
 
 //bus cycle types
 localparam IDLE = 2'b00;
@@ -72,9 +90,9 @@ localparam MCTYPE0 = 2'd0;
 localparam MCTYPE1 = 2'd1;
 localparam MCTYPE2 = 2'd2;
 localparam MCTYPE3 = 2'd3;
-wire    [1:0]   mc_type = mc_output[17:16];
-wire            mc_alter_flag = mc_output[15];
-wire            mc_nonskippable = mc_output[14];
+wire    [1:0]   mc_type = mc_rom[17:16];
+wire            mc_alter_flag = mc_rom[15];
+wire            mc_jump_to_next_inst = mc_rom[14];
 
 //next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte
 wire    [1:0]   mc_next_bus_acc =   (mc_type == MCTYPE3 && mc_output[7]) ? 
@@ -129,7 +147,7 @@ localparam SB_ADDR_REL_L = 5'b10101;
 localparam SB_ADDR_INT   = 5'b10110;
 localparam SB_SUB2       = 5'b10111;
 localparam SB_SUB1       = 5'b11000;
-localparam SB_ZERO       = 5'b11001;
+localparam SB_z_comb       = 5'b11001;
 localparam SB_ADD1       = 5'b11010;
 localparam SB_ADD2       = 5'b11011;
 localparam SB_TEMP       = 5'b11100;
@@ -197,7 +215,7 @@ wire    opcode_tick = timing_sr[11] & current_bus_acc == RD4 & mcuclk_pcen;
 wire    rw_tick = timing_sr[8] & current_bus_acc != RD4 & mcuclk_pcen;
 wire    cycle_tick = opcode_tick | rw_tick;
 
-wire    mc_read_tick = timing_sr[8] | timing_sr[11] & mcuclk_pcen;
+assign  mc_read_tick = (timing_sr[8] | timing_sr[11]) & mcuclk_pcen;
 
 wire    opcode_inlatch_tick = timing_sr[6] & current_bus_acc == RD4 & mcuclk_pcen;
 wire    md_inlatch_tick = timing_sr[6] & current_bus_acc == RD3 & mcuclk_pcen;
@@ -240,8 +258,6 @@ end
 
 
 
-
-
 ///////////////////////////////////////////////////////////
 //////  INTERRUPT HANDLER
 ////
@@ -255,7 +271,7 @@ wire    [2:0]   int_lv;
 reg             iflag_NMI; //nNMI physical pin input, takes maximum 10us to suppress glitch
 reg             iflag_TIMER0, iflag_TIMER1; //timer 0/1 match interrupt
 reg             iflag_pINT1, iflag_nINT2; //INT1, nINT2 physical pin input, takes 12+2 mcuclk cycles to suppress gluitch
-reg             iflag_cntr0, iflag_cntr1; //timer/event counter 0/1 match interrupt
+reg             iflag_CNTR0, iflag_CNTR1; //timer/event counter 0/1 match interrupt
 reg             iflag_nCNTRCIN; //falling edge of the timer/event countr input (CI input) or timer output (TO) -> from the datasheet
 reg             iflag_ADC; //adc conversion complete
 reg             iflag_BUFFULL, iflag_BUFEMPTY; //UART buffer full/empty
@@ -284,7 +300,7 @@ always @(posedge emuclk) begin
         iflag_NMI <= 1'b0;
         iflag_TIMER0 <= 1'b0; iflag_TIMER1 <= 1'b0;
         iflag_pINT1 <= 1'b0; iflag_nINT2 <= 1'b0;
-        iflag_cntr0 <= 1'b0; iflag_cntr1 <= 1'b0;
+        iflag_CNTR0 <= 1'b0; iflag_CNTR1 <= 1'b0;
         iflag_nCNTRCIN <= 1'b0;
         iflag_ADC <= 1'b0;
         iflag_BUFFULL <= 1'b0; iflag_BUFEMPTY <= 1'b0;
@@ -318,17 +334,29 @@ reg             iflag_muxed;
 
 
 
-
-
-
-
-
-
-
-
 ///////////////////////////////////////////////////////////
 //////  MICROCODE ENGINE
 ////
+
+//opcode page indicator
+always @(posedge emuclk) begin
+    if(!mrst_n) opcode_page <= 3'd0;
+    else begin
+        if(cycle_tick) if(mc_next_bus_acc == RD4) begin
+            if(opcode_page == 3'd0) begin
+                     if(reg_OPCODE == 8'h48) opcode_page <= 3'd1;
+                else if(reg_OPCODE == 8'h60) opcode_page <= 3'd2;
+                else if(reg_OPCODE == 8'h64) opcode_page <= 3'd3;
+                else if(reg_OPCODE == 8'h70) opcode_page <= 3'd4;
+                else if(reg_OPCODE == 8'h74) opcode_page <= 3'd5;
+            end
+            else begin
+                opcode_page <= 3'd0; //2-byte opcode ended, reset opcode page
+            end
+        end
+    end
+end
+
 
 
 
@@ -496,11 +524,11 @@ reg             iflag_muxed;
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13]: IACK
-    D[12:11]: CARRY MOD
+    D[12:11]: c_comb MOD
         00: NOP
         01: NOP
-        10: CARRY RESET
-        11: CARRY SET
+        10: c_comb RESET
+        11: c_comb SET
     D[10:9]: INTERRUPT
         00: NOP
         01: NOP
@@ -532,7 +560,7 @@ reg             iflag_muxed;
         11: 4-state read
 
     4. SPECIAL OPERATION
-    11_X_X_X_XXXX_X_X_XX_X_?_?_XX
+    11_X_X_XXXXX_X_X_XXX_X_?_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
@@ -548,6 +576,8 @@ reg             iflag_muxed;
         01: 3-state read
         10: 3-state write
         11: 4-state read
+
+    nop = 11_0_0_10000_0_0_000_0_0_XX
 */
 
 
@@ -708,7 +738,6 @@ reg             flag_EXX, flag_EXA, flag_EXH;
 wire            sel_BCDE = flag_EXX;
 wire            sel_VAEA = flag_EXA;
 wire            sel_HL = flag_EXX ^ flag_EXH;
-
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         flag_EXX <= 1'b0;
@@ -730,7 +759,6 @@ always @(posedge emuclk) begin
 end
 
 //register pairs and write control
-
 reg     [7:0]   regpair_EAH, regpair_EAL, regpair_V, regpair_A, regpair_B, regpair_C, regpair_D, regpair_E, regpair_H, regpair_L [0:1];
 always @(posedge emuclk) begin
     if(!mrst_n) begin
@@ -1221,7 +1249,7 @@ always @(*) begin
             SB_ADDR_INT   : alu_pb = int_addr; //selected externally
             SB_SUB2       : alu_pb = 16'hFFFE;
             SB_SUB1       : alu_pb = 16'hFFFF;
-            SB_ZERO       : alu_pb = 16'h0000;
+            SB_z_comb       : alu_pb = 16'h0000;
             SB_ADD1       : alu_pb = 16'h0001;
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
@@ -1279,7 +1307,7 @@ end
 ////
 
 //
-//  ALU: full adder with nibble, byte, word carry outputs
+//  ALU: full adder with nibble, byte, word c_comb outputs
 //
 
 reg     [15:0]  alu_adder_op0, alu_adder_op1;
@@ -1311,7 +1339,7 @@ always @(*) begin
         case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
             4'b0000: begin alu_shifter[7] = 1'b0; 
                            alu_shifter[6:0] = alu_pb[7:1];
-                           alu_shifter_co = alu_pb[0]; end //SLRC, skip condition: CARRY
+                           alu_shifter_co = alu_pb[0]; end //SLRC, skip condition: c_comb
             4'b0001: ; //no instruction specified
             4'b0010: begin alu_shifter[7] = 1'b0; 
                            alu_shifter[6:0] = alu_pb[7:1];
@@ -1321,7 +1349,7 @@ always @(*) begin
                            alu_shifter_co = alu_pb[0]; end //RLR
             4'b0100: begin alu_shifter[0] = 1'b0; 
                            alu_shifter[7:1] = alu_pb[6:0];
-                           alu_shifter_co = alu_pb[7]; end //SLLC, skip condition: CARRY
+                           alu_shifter_co = alu_pb[7]; end //SLLC, skip condition: c_comb
             4'b0101: ; //no instruction specified
             4'b0110: begin alu_shifter[0] = 1'b0; 
                            alu_shifter[7:1] = alu_pb[6:0];
@@ -1408,14 +1436,14 @@ always @(*) begin
             case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
                 4'h0: alu_output = alu_pb;                        //MVI(move)
                 4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
-                4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
+                4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO c_comb)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
                 4'h3: begin alu_output = alu_adder_out;           //SUBNB(check skip condition: NO BORROW; 2's complement)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'h4: begin alu_output = alu_adder_out;           //ADD
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
-                4'h5: begin alu_output = alu_adder_out;           //ADD with carry
+                4'h5: begin alu_output = alu_adder_out;           //ADD with c_comb
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= flag_CY; end
                 4'h6: begin alu_output = alu_adder_out;           //SUB
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
@@ -1431,12 +1459,12 @@ always @(*) begin
                 4'hB: begin alu_temp_output = alu_adder_out;      //SLT(skip if less than; check skip condition: BORROW; 2's complement)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1;
                             alu_adder_borrow_mode = 1'b1; end
-                4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO ZERO)
-                4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: ZERO)
-                4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO ZERO)
+                4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO z_comb)
+                4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: z_comb)
+                4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO z_comb)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: ZERO)
+                4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: z_comb)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
             endcase
@@ -1562,109 +1590,128 @@ end
 //////  FLAG GENERATOR
 ////
 
-//combinational
-reg             zero, carry, half_carry;
+//Since the flags are generated as a result of the ALU-type microcode operation
+//bits are enabled during execution. This can interrupt the current microcode
+//flow. Use two-stage DFF to change the flags "after" the current instruction.
 
-//ZERO flag
+//combinational
+reg             z_comb, c_comb, hc_comb;
+
+//temporary latch
+reg             z_temp, c_temp, hc_temp, sk_temp;
+
+//z_comb flag
 always @(*) begin
-    zero = flag_Z;
+    z_comb = flag_Z;
 
     if(mc_type == MCTYPE0) begin
-        if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) zero = alu_output == 16'h0000 ? 1'b1 : 1'b0;
+        if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) z_comb = alu_output == 16'h0000 ? 1'b1 : 1'b0;
     end
     else if(mc_type == MCTYPE1) begin
-             if(mc_t1_alusel == 4'h2) zero = alu_output == 16'h0000 ? 1'b1 : 1'b0; //DAA
-        else if(mc_t1_alusel == 4'hB) zero = alu_output == 16'h0000 ? 1'b1 : 1'b0; //INC
-        else if(mc_t1_alusel == 4'hC) zero = alu_output == 16'h0000 ? 1'b1 : 1'b0; //DEC
+             if(mc_t1_alusel == 4'h2) z_comb = alu_output == 16'h0000 ? 1'b1 : 1'b0; //DAA
+        else if(mc_t1_alusel == 4'hB) z_comb = alu_output == 16'h0000 ? 1'b1 : 1'b0; //INC
+        else if(mc_t1_alusel == 4'hC) z_comb = alu_output == 16'h0000 ? 1'b1 : 1'b0; //DEC
     end
 end
 
 always @(posedge emuclk) begin
-    if(!mrst_n) flag_Z <= 1'b0; //reset
+    if(!mrst_n) begin
+        z_temp <= 1'b0;
+        flag_Z <= 1'b0; //reset
+    end
     else begin
-        if(cycle_tick) if(mc_alter_flag) flag_Z <= zero;
+        if(cycle_tick) if(mc_alter_flag) z_temp <= z_comb;
+        if(cycle_tick) if(mc_end_of_instruction) flag_Z <= z_temp;
     end
 end
 
-//CARRY flag
+//c_comb flag
 always @(*) begin
-    carry = flag_CY;
+    c_comb = flag_CY;
 
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
             case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
-                4'h2: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADDNC
-                4'h3: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUBNB
-                4'h4: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADD
-                4'h5: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADC
-                4'h6: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUB
-                4'h7: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SBB
-                4'hA: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SGT
-                4'hB: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SLT
-                4'hE: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SNE
-                4'hF: carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SEQ
-                default: carry = flag_CY;
+                4'h2: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADDNC
+                4'h3: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUBNB
+                4'h4: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADD
+                4'h5: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADC
+                4'h6: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUB
+                4'h7: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SBB
+                4'hA: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SGT
+                4'hB: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SLT
+                4'hE: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SNE
+                4'hF: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SEQ
+                default: c_comb = flag_CY;
             endcase
         end
     end
     else if(mc_type == MCTYPE1) begin
         if(mc_t1_alusel == 4'h2) begin //DAA
-            carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
+            c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
         end
         else if(mc_t1_alusel == 4'h7) begin //shift 
-            carry = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
+            c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
         end
     end
     else if(mc_type == MCTYPE2) begin
-        if(mc_bk_carry_ctrl[1] == 1'b1) carry = mc_bk_carry_ctrl[0];
+        if(mc_bk_carry_ctrl[1] == 1'b1) c_comb = mc_bk_carry_ctrl[0];
     end
 end
 
 always @(posedge emuclk) begin
-    if(!mrst_n) flag_CY <= 1'b0; //reset
+    if(!mrst_n) begin
+        c_temp <= 1'b0;
+        flag_CY <= 1'b0; //reset
+    end
     else begin
-        if(cycle_tick) if(mc_alter_flag) flag_CY <= carry;
+        if(cycle_tick) if(mc_alter_flag) c_temp <= c_comb;
+        if(cycle_tick) if(mc_end_of_instruction) flag_CY <= c_temp;
     end
 end
 
-//HALF CARRY flag
+//HALF c_comb flag
 always @(*) begin
-    half_carry = flag_HC;
+    hc_comb = flag_HC;
 
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
             case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
-                4'h2: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADDNC
-                4'h3: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SUBNB
-                4'h4: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADD
-                4'h5: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADC
-                4'h6: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SUB
-                4'h7: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SBB
-                4'hA: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SGT
-                4'hB: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SLT
-                4'hE: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SNE
-                4'hF: half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SEQ
-                default: half_carry = flag_HC;
+                4'h2: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADDNC
+                4'h3: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SUBNB
+                4'h4: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADD
+                4'h5: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADC
+                4'h6: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SUB
+                4'h7: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SBB
+                4'hA: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SGT
+                4'hB: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SLT
+                4'hE: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SNE
+                4'hF: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SEQ
+                default: hc_comb = flag_HC;
             endcase
         end
     end
     else if(mc_type == MCTYPE1) begin
         if(mc_t1_alusel == 4'h2) begin //DAA
-            half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode;
+            hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode;
         end
         else if(mc_t1_alusel == 4'hB) begin //INC
-            half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode;
+            hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode;
         end
         else if(mc_t1_alusel == 4'hC) begin //DEC
-            half_carry = alu_adder_nibble_co ^ alu_adder_borrow_mode;
+            hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode;
         end
     end
 end
 
 always @(posedge emuclk) begin
-    if(!mrst_n) flag_HC <= 1'b0; //reset
+    if(!mrst_n) begin
+        hc_temp <= 1'b0;
+        flag_HC <= 1'b0; //reset
+    end
     else begin
-        if(cycle_tick) if(mc_alter_flag) flag_HC <= half_carry;
+        if(cycle_tick) if(mc_alter_flag) hc_temp <= hc_comb;
+        if(cycle_tick) if(mc_end_of_instruction) flag_HC <= hc_temp;
     end
 end
 
@@ -1680,50 +1727,56 @@ always @(*) begin
 end
 
 always @(posedge emuclk) begin
-    if(!mrst_n) flag_SK <= 1'b0; //reset
+    if(!mrst_n) begin
+        sk_temp <= 1'b0;
+        flag_SK <= 1'b0; //reset
+    end
     else begin
         if(cycle_tick) begin
-            if(mc_end_of_instruction) flag_SK <= 1'b0;
+            if(mc_end_of_instruction) begin
+                sk_temp <= 1'b0;
+                flag_SK <= sk_temp;
+            end
             else begin
                 if(mc_alter_flag) begin
                     if(mc_type == MCTYPE0) begin
                         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
                             case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
-                                4'h2: flag_SK <= ~carry; //ADDNC(skip condition: NO CARRY)
-                                4'h3: flag_SK <= ~carry; //SUBNB(skip condition: NO BORROW)
-                                4'hA: flag_SK <= ~carry; //SGT(skip condition: NO BORROW)
-                                4'hB: flag_SK <= carry;  //SLT(skip condition: BORROW)
-                                4'hC: flag_SK <= ~zero;  //AND(skip condition: NO ZERO)
-                                4'hD: flag_SK <= zero;   //OR(skip condition: ZERO)
-                                4'hE: flag_SK <= ~zero;  //SNE(skip condition: NO ZERO)
-                                4'hF: flag_SK <= zero;   //SEQ(skip condition: ZERO)
-                                default: flag_SK <= 1'b0;
+                                4'h2: sk_temp <= ~c_comb; //ADDNC(skip condition: NO c_comb)
+                                4'h3: sk_temp <= ~c_comb; //SUBNB(skip condition: NO BORROW)
+                                4'hA: sk_temp <= ~c_comb; //SGT(skip condition: NO BORROW)
+                                4'hB: sk_temp <= c_comb;  //SLT(skip condition: BORROW)
+                                4'hC: sk_temp <= ~z_comb; //AND(skip condition: NO z_comb)
+                                4'hD: sk_temp <= z_comb;  //OR(skip condition: z_comb)
+                                4'hE: sk_temp <= ~z_comb; //SNE(skip condition: NO z_comb)
+                                4'hF: sk_temp <= z_comb;  //SEQ(skip condition: z_comb)
+                                default: sk_temp <= 1'b0;
                             endcase
                         end
                     end
                     else if(mc_type == MCTYPE1) begin
                         if(mc_t1_alusel == 4'h7) begin //shift 
                             case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
-                                4'b0000: flag_SK <= carry; //SLRC, skip condition: CARRY
-                                4'b0100: flag_SK <= carry; //SLLC, skip condition: CARRY
-                                default: flag_SK <= 1'b0;
+                                4'b0000: sk_temp <= c_comb; //SLRC, skip condition: c_comb
+                                4'b0100: sk_temp <= c_comb; //SLLC, skip condition: c_comb
+                                default: sk_temp <= 1'b0;
                             endcase
                         end
-                        else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: CARRY
-                            flag_SK = carry;
+                        else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: c_comb
+                            sk_temp = c_comb;
                         end
                         else if(mc_t1_alusel == 4'hC) begin //DEC, skip condition: BORROW
-                            flag_SK = carry;
+                            sk_temp = c_comb;
                         end
                     end
                     else if(mc_type == MCTYPE2) begin
                         case(mc_bk_skip_ctrl)
                             3'b000: ;
-                            3'b001: flag_SK = skip_flag;  //SK
-                            3'b010: flag_SK = ~skip_flag; //SKN
-                            3'b011: flag_SK = reg_MDL[reg_OPCODE[2:0]]; //BIT
-                            3'b100: flag_SK = iflag_muxed; //SKIT
-                            3'b101: flag_SK = ~iflag_muxed; //SKNIT
+                            3'b001: sk_temp = skip_flag;  //SK
+                            3'b010: sk_temp = ~skip_flag; //SKN
+                            3'b011: sk_temp = reg_MDL[reg_OPCODE[2:0]]; //BIT
+                            3'b100: sk_temp = iflag_muxed; //SKIT
+                            3'b101: sk_temp = ~iflag_muxed; //SKNIT
                             3'b110: ;
                             3'b111: ;
                         endcase
@@ -1734,34 +1787,60 @@ always @(posedge emuclk) begin
     end
 end
 
-//L1 flag
+//The L1/0 flag should be enabled at the end of the last microcode step(w/ mc_alter_flag)
+//so as not to interfere with the execution of the current microcode.
+
+//L1 flag, MVI A
+wire            flag_l1_set_cond = opcode_page == 3'd0 && reg_OPCODE == 8'h69;
 always @(posedge emuclk) begin
     if(!mrst_n) flag_L1 <= 1'b0; //reset
     else begin
         if(cycle_tick) begin
-            if(mc_end_of_instruction) flag_L1 <= 1'b0;
+            if(!flag_l1_set_cond) flag_L1 <= 1'b0;
             else begin
-                if(mc_alter_flag) begin
-                    flag_L1 <= reg_OPCODE == 8'h69; //MVI A
-                end
+                if(mc_alter_flag) flag_L1 <= 1'b1;
             end
         end
     end
 end
 
-//L0 flag
+//L0 flag, MVI A, LXI HL
+wire            flag_l0_set_cond = (opcode_page == 3'd0 && reg_OPCODE == 8'h6F) || (opcode_page == 3'd0 && reg_OPCODE == 8'h34);
 always @(posedge emuclk) begin
     if(!mrst_n) flag_L0 <= 1'b0; //reset
     else begin
         if(cycle_tick) begin
-            if(mc_end_of_instruction) flag_L0 <= 1'b0;
+            if(!flag_l0_set_cond) flag_L0 <= 1'b0;
             else begin
-                if(mc_alter_flag) begin
-                    flag_L0 <= reg_OPCODE == 8'h6F || reg_OPCODE == 8'h34; //MVI A, LXI HL
-                end
+                if(mc_alter_flag) flag_L0 <= 1'b1; 
             end
         end
     end
 end
+
+
+
+///////////////////////////////////////////////////////////
+//////  SKIP HANDLER
+////
+
+//Mask the microcode output as NOP when the skip condition is met.
+//At the end of the opcode/data fetch cycle, read the successive instruction 
+//by forcing the next_bus_acc as "RD4"
+
+always @(*) begin
+    if(|{flag_SK, flag_L1, flag_L0}) begin
+        if(mc_jump_to_next_inst) mc_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
+        else mc_output = {16'b11_0_0_10000_0_0_000_0_0, mc_rom[1:0]};
+    end
+    else begin
+        mc_output = mc_rom;
+    end
+end
+
+
+
+
+
 
 endmodule

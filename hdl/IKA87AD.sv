@@ -1,35 +1,31 @@
 module IKA87AD (
     //clock
-    input   wire            i_EMUCLK,
-    input   wire            i_MCUCLK_PCEN,
+    input   wire                i_EMUCLK,
+    input   wire                i_MCUCLK_PCEN,
 
     //system control
-    input   wire            i_RESET_n,
-    input   wire            i_STOP_n,
+    input   wire                i_RESET_n,
+    input   wire                i_STOP_n,
 
     //R/W control
-    output  wire            o_ALE,
-    output  wire            o_RD_n,
-    output  wire            o_WR_n,
+    output  wire                o_ALE,
+    output  wire                o_RD_n,
+    output  wire                o_WR_n,
 
     //interrupt control
-    input   wire            i_NMI_n,
-    input   wire            i_INT1,
+    input   wire                i_NMI_n,
+    input   wire                i_INT1,
 
     //port C I/O and DIRECTION
-    input   wire    [7:0]   i_PC_I,
-    output  wire    [7:0]   o_PC_O,
-    output  wire    [7:0]   o_PC_DIR,
+    input   wire    [7:0]       i_PC_I,
+    output  wire    [7:0]       o_PC_O,
+    output  wire    [7:0]       o_PC_DIR,
 
     //port D I/O and DIRECTION
-    input   wire    [7:0]   i_PD_I,
-    output  wire    [7:0]   o_PD_O,
-    output  wire    [7:0]   o_PD_DIR
+    input   wire    [7:0]       i_PD_I,
+    output  wire    [7:0]       o_PD_O,
+    output  wire    [7:0]       o_PD_DIR
 );
-
-
-
-
 
 
 
@@ -42,6 +38,7 @@ wire            mcuclk_pcen = i_MCUCLK_PCEN;
 wire            mrst_n = i_RESET_n;
 
 
+
 ///////////////////////////////////////////////////////////
 //////  OPCODE DECODER
 ////
@@ -52,22 +49,18 @@ wire            mrst_n = i_RESET_n;
 reg     [2:0]   opcode_page; //page indicator
 reg     [7:0]   reg_OPCODE; //opcode register
 wire    [7:0]   op = reg_OPCODE; //alias signal
+
+//disassembler
+reg     [1:0]   reg_FULL_OPCODE_cntr;
 reg     [7:0]   reg_FULL_OPCODE_debug[0:3]; //wtf
 
 //microcode decoder
-reg     [7:0]   addr; //microcode rom address
+reg     [7:0]   mc_sa; //microcode rom start address
 always @(*) begin
     if(opcode_page == 3'd0) begin
-        if(op == 8'h00 || op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) addr = NOP;
+        if(op == 8'h00 || op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mc_sa = NOP;
     end
 end
-
-
-
-
-
-
-
 
 
 
@@ -75,132 +68,37 @@ end
 //////  MICROCODE OUTPUT SIGNALS
 ////
 
-wire            mc_read_tick; //BRAM read tick
-reg     [17:0]  mc_rom; //ROM output, registered
-reg     [17:0]  mc_output; //combinational
+wire            mcrom_read_tick; //BRAM read tick
+wire    [17:0]  mcrom_data; //ROM output, registered
+reg     [17:0]  mc_ctrl_output; //combinational
 
-//bus cycle types
-localparam IDLE = 2'b00;
-localparam RD4 = 2'b01;
-localparam RD3 = 2'b10;
-localparam WR3 = 2'b11;
+wire    [1:0]   mc_type = mcrom_data[17:16];
+wire            mc_alter_flag = mcrom_data[15];
+wire            mc_jump_to_next_inst = mcrom_data[14];
 
-//microcode types
-localparam MCTYPE0 = 2'd0;
-localparam MCTYPE1 = 2'd1;
-localparam MCTYPE2 = 2'd2;
-localparam MCTYPE3 = 2'd3;
-wire    [1:0]   mc_type = mc_rom[17:16];
-wire            mc_alter_flag = mc_rom[15];
-wire            mc_jump_to_next_inst = mc_rom[14];
-
-//next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte
-wire    [1:0]   mc_next_bus_acc =   (mc_type == MCTYPE3 && mc_output[7]) ? 
-                                        (reg_OPCODE[0] & reg_OPCODE[1]) ? 
-                                            RD3
-                                            : mc_output[1:0]
-                                        : mc_output[1:0];
+wire    [1:0]   mc_next_bus_acc = mc_ctrl_output[1:0];
 wire            mc_end_of_instruction = mc_next_bus_acc == RD4;
 
 //MICROCODE TYPE 0 FIELDS
-
-//source a/destination types
-localparam SA_DST_R      = 5'b00000;
-localparam SA_DST_R2     = 5'b00001;
-localparam SA_DST_R1     = 5'b00010;
-localparam SA_DST_RP2    = 5'b00011;
-localparam SA_DST_RP     = 5'b00100;
-localparam SA_DST_RP1    = 5'b00101;
-localparam SA_DST_SR_SR1 = 5'b00110;
-localparam SA_DST_SR2    = 5'b00111;
-localparam SA_DST_SR3    = 5'b01000;
-localparam SA_DST_MDL    = 5'b01001;
-localparam SA_DST_MD     = 5'b01010;
-localparam SA_DST_MA     = 5'b01011;
-localparam SA_DST_PC     = 5'b01100;
-localparam SA_DST_SP     = 5'b01101;
-localparam SA_DST_A      = 5'b00000;
-localparam SA_DST_EA     = 5'b00000;
-localparam SA_DST_C      = 5'b00000;
-localparam SA_DST_RPA1   = 5'b11110;
-localparam SA_DST_RPA2   = 5'b11111;
-
-//source b types
-localparam SB_R          = 5'b00000;
-localparam SB_R2         = 5'b00001;
-localparam SB_R1         = 5'b00010;
-localparam SB_RP2        = 5'b00011;
-localparam SB_RP         = 5'b00100;
-localparam SB_RP1        = 5'b00101;
-localparam SB_SR_SR1     = 5'b00110;
-localparam SB_SR2        = 5'b00111;
-localparam SB_SR4        = 5'b01000;
-localparam SB_MDH        = 5'b01001;
-localparam SB_MD         = 5'b01010;
-localparam SB_A          = 5'b01110;
-localparam SB_EA         = 5'b01111;
-localparam SB_ADDR_V_WA  = 5'b10001;
-localparam SB_ADDR_TA    = 5'b10010;
-localparam SB_ADDR_FA    = 5'b10011;
-localparam SB_ADDR_REL_S = 5'b10100;
-localparam SB_ADDR_REL_L = 5'b10101;
-localparam SB_ADDR_INT   = 5'b10110;
-localparam SB_SUB2       = 5'b10111;
-localparam SB_SUB1       = 5'b11000;
-localparam SB_z_comb       = 5'b11001;
-localparam SB_ADD1       = 5'b11010;
-localparam SB_ADD2       = 5'b11011;
-localparam SB_TEMP       = 5'b11100;
-localparam SB_RPA1       = 5'b11101;
-localparam SB_RPA2       = 5'b11110;
-localparam SB_OFFSET     = 5'b11111;
-
 wire    [4:0]   mc_sb; //microcode type 0, source b
 wire    [3:0]   mc_sa_dst; //microcode type 0, source a
 wire    [1:0]   mc_t0_alusel;
 
-
 //MICROCODE TYPE 1 FIELDS
-
-//source c types
-localparam SC_DST_R2     = 4'b0000;
-localparam SC_DST_A      = 4'b0001;
-localparam SC_DST_EA     = 4'b0010;
-localparam SC_DST_MDL    = 4'b0011;
-localparam SC_DST_MD     = 4'b0100;
-localparam SC_DST_MA     = 4'b0101;
-localparam SC_DST_PSW    = 4'b0110;
-localparam SC_DST_RPA    = 4'b1111;
-
-//source d types
-localparam SD_A          = 4'b0000;
-localparam SD_EA         = 4'b0001;
-localparam SD_BC         = 4'b0010;
-localparam SD_DE         = 4'b0011;
-localparam SD_HL         = 4'b0100;
-localparam SD_MDH        = 4'b0101;
-localparam SD_MD         = 4'b0110;
-localparam SD_PC         = 4'b0111;
-localparam SD_SP         = 4'b1000;
-localparam SD_PSW        = 4'b1001;
-localparam SD_RPA        = 4'b1111;
-
 wire    [3:0]   mc_sd; //microcode type 1, source d
 wire    [3:0]   mc_sc_dst; //microcode type 1, source c
 wire    [3:0]   mc_t1_alusel;
 
 //MICROCODE TYPE 2 FIELDS
-wire            mc_bk_iack       = mc_output[13];
-wire    [1:0]   mc_bk_carry_ctrl = mc_output[12:11];
-wire    [1:0]   mc_bk_int_ctrl   = mc_output[10:9];
-wire    [1:0]   mc_bk_reg_exchg  = mc_output[8:7];
-wire    [1:0]   mc_bk_cpu_ctrl   = mc_output[6:5];
-wire    [2:0]   mc_bk_skip_ctrl  = mc_output[4:2];
+wire            mc_bk_iack       = mc_ctrl_output[13];
+wire    [1:0]   mc_bk_carry_ctrl = mc_ctrl_output[12:11];
+wire    [1:0]   mc_bk_int_ctrl   = mc_ctrl_output[10:9];
+wire    [1:0]   mc_bk_reg_exchg  = mc_ctrl_output[8:7];
+wire    [1:0]   mc_bk_cpu_ctrl   = mc_ctrl_output[6:5];
+wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
 wire    [15:0]   mc_conditional;
-
-
 
 
 
@@ -215,7 +113,7 @@ wire    opcode_tick = timing_sr[11] & current_bus_acc == RD4 & mcuclk_pcen;
 wire    rw_tick = timing_sr[8] & current_bus_acc != RD4 & mcuclk_pcen;
 wire    cycle_tick = opcode_tick | rw_tick;
 
-assign  mc_read_tick = (timing_sr[8] | timing_sr[11]) & mcuclk_pcen;
+assign  mcrom_read_tick = (timing_sr[8] | timing_sr[11]) & mcuclk_pcen;
 
 wire    opcode_inlatch_tick = timing_sr[6] & current_bus_acc == RD4 & mcuclk_pcen;
 wire    md_inlatch_tick = timing_sr[6] & current_bus_acc == RD3 & mcuclk_pcen;
@@ -357,13 +255,58 @@ always @(posedge emuclk) begin
     end
 end
 
+//microcode address counter
+localparam WAIT_FOR_DECODING = 1'b0;
+localparam RUNNING = 1'b1;
+reg             engine_state;
+reg     [3:0]   engine_suspension_cntr;
+reg     [2:0]   mc_cntr;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        engine_state <= WAIT_FOR_DECODING;
+        engine_suspension_cntr <= 4'd0;
+        mc_cntr <= 3'd0;
+    end
+    else begin
+        if(mcrom_read_tick) begin
+            if(engine_state == RUNNING) begin
+                if(mc_end_of_instruction) begin
+                    engine_state <= WAIT_FOR_DECODING;
+                    mc_cntr <= mc_cntr;
+                end
+                else begin
+                    if(engine_suspension_cntr == 4'd0) begin
+                        engine_state <= engine_state;
+                        mc_cntr <= mc_cntr + 3'd1;
+                    end 
+                end
+            end
+            else begin
+                engine_state <= RUNNING;
+                mc_cntr <= mc_sa + 3'd1;
+            end
+        end
+    end
+end
 
+reg     [7:0]   mcrom_addr;
+always @(*) begin
+    if(engine_state == WAIT_FOR_DECODING) mcrom_addr = mc_sa;
+    else mcrom_addr = mc_end_of_instruction ? NOP : {mc_sa[7:3], mc_cntr};
+end
 
 
 
 ///////////////////////////////////////////////////////////
 //////  MICROCODE ROM
 ////
+
+IKA87AD_microcode u_microcode (
+    .i_CLK                      (emuclk                     ),
+    .i_MCROM_READ_TICK          (mcrom_read_tick            ),
+    .i_MCROM_ADDR               (mcrom_addr                 ),
+    .o_MCROM_DATA               (mcrom_data                 )
+);
 
 /*
     MICROCODE TYPE DESCRIPTION
@@ -718,8 +661,6 @@ wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0110;
 
 
 
-
-
 ///////////////////////////////////////////////////////////
 //////  REGISTER FILE
 ////
@@ -1004,11 +945,10 @@ always @(posedge emuclk) begin
             if(opcode_inlatch_tick) reg_OPCODE <= i_PD_I;
         
             //Full opcode register for the disassembler
-            if(full_opcode_inlatch_tick_debug) begin
-                reg_FULL_OPCODE_debug[0] <= i_PD_I;
-                reg_FULL_OPCODE_debug[1] <= reg_FULL_OPCODE_debug[0];
-                reg_FULL_OPCODE_debug[2] <= reg_FULL_OPCODE_debug[1];
-                reg_FULL_OPCODE_debug[3] <= reg_FULL_OPCODE_debug[2];
+            if(cycle_tick) begin if(mc_end_of_instruction) reg_FULL_OPCODE_cntr <= 2'd0; end
+            else if(full_opcode_inlatch_tick_debug) begin
+                reg_FULL_OPCODE_debug[reg_FULL_OPCODE_cntr] <= i_PD_I;
+                reg_FULL_OPCODE_cntr <= reg_FULL_OPCODE_cntr + 2'd1;
             end
         end
     end
@@ -1249,7 +1189,7 @@ always @(*) begin
             SB_ADDR_INT   : alu_pb = int_addr; //selected externally
             SB_SUB2       : alu_pb = 16'hFFFE;
             SB_SUB1       : alu_pb = 16'hFFFF;
-            SB_z_comb       : alu_pb = 16'h0000;
+            SB_ZERO       : alu_pb = 16'h0000;
             SB_ADD1       : alu_pb = 16'h0001;
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
@@ -1827,17 +1767,19 @@ end
 //Mask the microcode output as NOP when the skip condition is met.
 //At the end of the opcode/data fetch cycle, read the successive instruction 
 //by forcing the next_bus_acc as "RD4"
-
 always @(*) begin
     if(|{flag_SK, flag_L1, flag_L0}) begin
-        if(mc_jump_to_next_inst) mc_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
-        else mc_output = {16'b11_0_0_10000_0_0_000_0_0, mc_rom[1:0]};
+        if(mc_jump_to_next_inst) mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
+        else mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, mcrom_data[1:0]};
     end
     else begin
-        mc_output = mc_rom;
+        mc_ctrl_output[17:2] = mcrom_data[17:2];
+
+        //next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte
+        if(mc_type == MCTYPE3 && mc_ctrl_output[7]) mc_ctrl_output[1:0] = (reg_OPCODE[0] & reg_OPCODE[1]) ? RD3 : mcrom_data[1:0];
+        else mc_ctrl_output[1:0] = mcrom_data[1:0];
     end
 end
-
 
 
 

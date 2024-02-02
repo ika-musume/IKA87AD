@@ -61,9 +61,10 @@ reg     [7:0]   mcrom_sa; //microcode rom start address
 always @(*) begin
     if(opcode_page == 3'd0) begin
         if(op == 8'h00 || op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mcrom_sa = NOP;
-        if((op[7:4] == 4'h6) && (op[3:0] > 4'h7)) mcrom_sa = MVI_R_BYTE;
-        if((op[7:4] == 4'h3) && (op[3:0] > 4'h8)) mcrom_sa = STAX_RPA;
-        if((op[7:4] == 4'h2) && (op[3:0] > 4'h8)) mcrom_sa = LDAX_RPA;
+        if((op[7:4] == 4'h6) && (op[3:0] >  4'h7)) mcrom_sa = MVI_R_BYTE;
+        if((op[7:4] == 4'h3) && (op[3:0] >  4'h8)) mcrom_sa = STAX_RPA;
+        if((op[7:4] == 4'h2) && (op[3:0] >  4'h8)) mcrom_sa = LDAX_RPA;
+        if((op[7:4] <  4'h5) && (op[3:0] == 4'h4)) mcrom_sa = LXI;
     end
 end
 
@@ -108,7 +109,9 @@ wire    [1:0]   mc_bk_cpu_ctrl   = mc_ctrl_output[6:5];
 wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
-wire    [15:0]   mc_conditional;
+wire    [4:0]   mc_s_nop         = mc_ctrl_output[13:9];
+wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
+wire            mc_s_swap_md_in  = mc_ctrl_output[3];
 
 
 
@@ -268,9 +271,11 @@ end
 //microcode address counter
 localparam WAIT_FOR_DECODING = 1'b0;
 localparam RUNNING = 1'b1;
+
 reg             engine_state;
 reg     [3:0]   engine_suspension_cntr;
 reg     [2:0]   mc_cntr;
+reg     [2:0]   mc_cntr_next;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         engine_state <= WAIT_FOR_DECODING;
@@ -285,24 +290,36 @@ always @(posedge emuclk) begin
                     mc_cntr <= mc_cntr;
                 end
                 else begin
-                    if(engine_suspension_cntr == 4'd0) begin
-                        engine_state <= engine_state;
-                        mc_cntr <= mc_cntr + 3'd1;
-                    end 
+                    if(mc_type == MCTYPE3 && mc_s_nop[4]) begin
+                        if(engine_suspension_cntr == mc_s_nop[3:0]) engine_suspension_cntr <= 4'd0;
+                        else engine_suspension_cntr <= engine_suspension_cntr + 4'd1;
+                    end
+                    engine_state <= engine_state;
+                    mc_cntr <= mc_cntr_next;
                 end
             end
             else begin
                 engine_state <= RUNNING;
-                mc_cntr <= mcrom_sa[2:0] + 3'd1;
+                mc_cntr <= mcrom_sa[2:0];
             end
         end
+    end
+end
+
+always @(*) begin
+    if(mc_type == MCTYPE3 && mc_s_nop[4]) begin
+        if(engine_suspension_cntr == mc_s_nop[3:0]) mc_cntr_next = mc_cntr + 3'd1;
+        else mc_cntr_next = mc_cntr;
+    end
+    else begin
+        mc_cntr_next = mc_cntr + 3'd1;
     end
 end
 
 reg     [7:0]   mcrom_addr;
 always @(*) begin
     if(engine_state == WAIT_FOR_DECODING) mcrom_addr = mcrom_sa;
-    else mcrom_addr = mc_end_of_instruction ? NOP : {mcrom_sa[7:3], mc_cntr};
+    else mcrom_addr = mc_end_of_instruction ? NOP : {mcrom_sa[7:3], mc_cntr_next};
 end
 
 
@@ -640,7 +657,7 @@ wire            reg_wr_word_nbyte = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_E
 
 //PC/SP
 wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
-                            (mc_type == MCTYPE3 && mc_conditional[3]);
+                            (mc_type == MCTYPE3 && mc_s_cond_pc_dec);
 wire            reg_SP_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP;
 
 //Memory IO related registers, MA=Memory Address, MD=Memory Data
@@ -655,7 +672,7 @@ wire            reg_MDL_wr  =   (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL 
                                 (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDL || mc_sc_dst == SC_DST_MD));
 wire            reg_MDH_wr  =   (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
                                 (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD);
-wire            reg_MD_swap_input_order = mc_type == MCTYPE3 && mc_conditional[0]; //swaps MD input order, from lo->hi to hi->lo
+wire            reg_MD_swap_input_order = mc_type == MCTYPE3 && mc_s_swap_md_in; //swaps MD input order, from lo->hi to hi->lo
 wire            reg_MD_swap_output_order = mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000; //swaps MD output order, push MD to stack
 
 //ALU control
@@ -958,6 +975,9 @@ always @(posedge emuclk) begin
                     else reg_INLATCH[7:0] <= i_PD_I;
                 end
                 else begin
+                    if(md_in_byte_sel) reg_INLATCH[15:8] <= i_PD_I;
+                    else reg_INLATCH[7:0] <= i_PD_I;
+                    
                     if(md_in_byte_sel) reg_MDH <= i_PD_I;
                     else reg_MDL <= i_PD_I;
                 end
@@ -1259,7 +1279,7 @@ always @(*) begin
         endcase
     end
     else if(mc_type == MCTYPE3) begin
-        if(mc_conditional[3]) begin
+        if(mc_s_cond_pc_dec) begin
             alu_pa = reg_PC;
             alu_pb = reg_C == 8'hFF ? 16'h0000 : 16'hFFFF;
         end
@@ -1528,7 +1548,7 @@ always @(*) begin
         end
     end
     else if(mc_type == MCTYPE3) begin
-        if(mc_conditional[3]) begin
+        if(mc_s_cond_pc_dec) begin
             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0;
 
             alu_output = alu_adder_out;
@@ -1767,7 +1787,7 @@ end
 //so as not to interfere with the execution of the current microcode.
 
 //L1 flag, MVI A
-//L0 flag, MVI A, LXI HL
+//L0 flag, MVI L, LXI HL
 wire            flag_l1_set_cond = opcode_page == 3'd0 && reg_OPCODE == 8'h69;
 wire            flag_l0_set_cond = (opcode_page == 3'd0 && reg_OPCODE == 8'h6F) || (opcode_page == 3'd0 && reg_OPCODE == 8'h34);
 always @(posedge emuclk) begin

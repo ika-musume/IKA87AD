@@ -62,6 +62,8 @@ always @(*) begin
     if(opcode_page == 3'd0) begin
         if(op == 8'h00 || op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mcrom_sa = NOP;
         if((op[7:4] == 4'h6) && (op[3:0] > 4'h7)) mcrom_sa = MVI_R_BYTE;
+        if((op[7:4] == 4'h3) && (op[3:0] > 4'h8)) mcrom_sa = STAX_RPA;
+        if((op[7:4] == 4'h2) && (op[3:0] > 4'h8)) mcrom_sa = LDAX_RPA;
     end
 end
 
@@ -79,7 +81,7 @@ wire    [17:0]  mcrom_data; //ROM output, registered
 reg     [17:0]  mc_ctrl_output; //combinational
 
 //fixed fields
-wire    [1:0]   mc_type = mcrom_data[17:16];
+wire    [1:0]   mc_type = mc_ctrl_output[17:16];
 wire            mc_alter_flag = mcrom_data[15];
 wire            mc_jump_to_next_inst = mcrom_data[14];
 
@@ -646,7 +648,8 @@ wire            reg_MA_dec_mode = mc_type == MCTYPE1 && mc_t1_alusel == 4'h8;
 wire            reg_MA_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MA) ||
                               (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA);
 
-wire            reg_MDL_wr_A  = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd0);
+wire            reg_MDL_wr_A  = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd0) ||
+                                (mc_type == MCTYPE1 && mc_sd == SD_RPA && mc_sc_dst == SC_DST_MA && opcode_page == 3'd0); //stax
 wire            reg_MD_wr_EA =  (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd1);
 wire            reg_MDL_wr  =   (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL || mc_sa_dst == SA_DST_MD)) || 
                                 (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDL || mc_sc_dst == SC_DST_MD));
@@ -932,7 +935,7 @@ always @(posedge emuclk) begin
             if(cycle_tick) begin
                 if(mc_end_of_instruction) md_dirty <= 1'b0;
                 else begin
-                    if(reg_MDL_wr_A || reg_MD_wr_EA || reg_MDL_wr || reg_MDH_wr) md_dirty <= 1'b1;
+                    if(reg_MDL_wr || reg_MDH_wr) md_dirty <= 1'b1;
                 end
             end
             //Memory Data register load
@@ -1288,9 +1291,14 @@ wire            alu_adder_nibble_co = alu_adder_nibble_lo[4];
 wire            alu_adder_byte_co = alu_adder_nibble_hi[4];
 wire            alu_adder_word_co = alu_adder_byte_high[8];
 reg             alu_adder_borrow_mode;
-assign  alu_adder_out[3:0] = alu_adder_op0[3:0] + alu_adder_op1[3:0] + alu_adder_cin;
-assign  alu_adder_out[7:4] = alu_adder_op0[7:4] + alu_adder_op1[7:4] + alu_adder_nibble_co;
-assign  alu_adder_out[15:8] = alu_adder_op0[15:8] + alu_adder_op1[15:8] + alu_adder_byte_co;
+
+assign  alu_adder_nibble_lo = alu_adder_op0[3:0] + alu_adder_op1[3:0] + alu_adder_cin;
+assign  alu_adder_nibble_hi = alu_adder_op0[7:4] + alu_adder_op1[7:4] + alu_adder_nibble_co;
+assign  alu_adder_byte_high = alu_adder_op0[15:8] + alu_adder_op1[15:8] + alu_adder_byte_co;
+
+assign  alu_adder_out[3:0] = alu_adder_nibble_lo[3:0];
+assign  alu_adder_out[7:4] = alu_adder_nibble_hi[3:0];
+assign  alu_adder_out[15:8] = alu_adder_byte_high[7:0];
 
 
 //
@@ -1759,29 +1767,21 @@ end
 //so as not to interfere with the execution of the current microcode.
 
 //L1 flag, MVI A
-wire            flag_l1_set_cond = opcode_page == 3'd0 && reg_OPCODE == 8'h69;
-always @(posedge emuclk) begin
-    if(!mrst_n) flag_L1 <= 1'b0; //reset
-    else begin
-        if(cycle_tick) begin
-            if(!flag_l1_set_cond) flag_L1 <= 1'b0;
-            else begin
-                if(mc_alter_flag) flag_L1 <= 1'b1;
-            end
-        end
-    end
-end
-
 //L0 flag, MVI A, LXI HL
+wire            flag_l1_set_cond = opcode_page == 3'd0 && reg_OPCODE == 8'h69;
 wire            flag_l0_set_cond = (opcode_page == 3'd0 && reg_OPCODE == 8'h6F) || (opcode_page == 3'd0 && reg_OPCODE == 8'h34);
 always @(posedge emuclk) begin
-    if(!mrst_n) flag_L0 <= 1'b0; //reset
+    if(!mrst_n) begin
+        flag_L1 <= 1'b0; //reset
+        flag_L0 <= 1'b0;
+    end
     else begin
-        if(cycle_tick) begin
-            if(!flag_l0_set_cond) flag_L0 <= 1'b0;
-            else begin
-                if(mc_alter_flag) flag_L0 <= 1'b1; 
-            end
+        if(mcuclk_pcen) begin
+            if(cycle_tick) if(mc_alter_flag) flag_L1 <= 1'b1;
+            if(mcrom_read_tick) if(!flag_l1_set_cond) flag_L1 <= 1'b0;
+
+            if(cycle_tick) if(mc_alter_flag) flag_L0 <= 1'b1;
+            if(mcrom_read_tick) if(!flag_l0_set_cond) flag_L0 <= 1'b0;
         end
     end
 end

@@ -86,4 +86,6 @@ localparam SD_RPA        = 4'b1111;
 
 //MICROCODE ROUTINE ENTRANCE ADDRESS
 localparam MVI_R_BYTE       = 8'd000;
+localparam STAX_RPA         = 8'd002;
+localparam LDAX_RPA         = 8'd004;
 localparam NOP              = 8'd255;

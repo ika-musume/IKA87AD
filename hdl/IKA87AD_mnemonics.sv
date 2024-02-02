@@ -26,11 +26,9 @@ localparam SA_DST_MD     = 5'b01010;
 localparam SA_DST_MA     = 5'b01011;
 localparam SA_DST_PC     = 5'b01100;
 localparam SA_DST_SP     = 5'b01101;
-localparam SA_DST_A      = 5'b00000;
-localparam SA_DST_EA     = 5'b00000;
-localparam SA_DST_C      = 5'b00000;
-localparam SA_DST_RPA1   = 5'b11110;
-localparam SA_DST_RPA2   = 5'b11111;
+localparam SA_DST_A      = 5'b01110;
+localparam SA_DST_EA     = 5'b01111;
+localparam SA_DST_C      = 5'b10000;
 
 //source b types
 localparam SB_R          = 5'b00000;
@@ -87,5 +85,5 @@ localparam SD_PSW        = 4'b1001;
 localparam SD_RPA        = 4'b1111;
 
 //MICROCODE ROUTINE ENTRANCE ADDRESS
-localparam TEST     = 8'd128;
-localparam NOP      = 8'd255;
+localparam MVI_R_BYTE       = 8'd000;
+localparam NOP              = 8'd255;

@@ -60,11 +60,26 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3]; //wtf
 reg     [7:0]   mcrom_sa; //microcode rom start address
 always @(*) begin
     if(opcode_page == 3'd0) begin
-        if(op == 8'h00 || op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mcrom_sa = NOP;
-        if((op[7:4] == 4'h6) && (op[3:0] >  4'h7)) mcrom_sa = MVI_R_BYTE;
-        if((op[7:4] == 4'h3) && (op[3:0] >  4'h8)) mcrom_sa = STAX_RPA;
-        if((op[7:4] == 4'h2) && (op[3:0] >  4'h8)) mcrom_sa = LDAX_RPA;
-        if((op[7:4] <  4'h5) && (op[3:0] == 4'h4)) mcrom_sa = LXI;
+             if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mcrom_sa = ID;
+        else if((op[7:4] == 4'h6) && (op[3:0] >  4'h7)) mcrom_sa = MVI_R_BYTE;
+        else if((op[7:4] == 4'h3) && (op[3:0] >  4'h8)) mcrom_sa = STAX_RPA;
+        else if((op[7:4] == 4'h2) && (op[3:0] >  4'h8)) mcrom_sa = LDAX_RPA;
+        else if((op[7:4] <  4'h5) && (op[3:0] == 4'h4)) mcrom_sa = LXI;
+        else if((op[7:4] <  4'h4) && (op[3:0] == 4'h2)) mcrom_sa = INX_RP2;
+        else if((op[7:4] == 4'hA) && (op[3:0] == 4'h8)) mcrom_sa = INX_EA;
+        else if((op[7:4] <  4'h4) && (op[3:0] == 4'h3)) mcrom_sa = DCX_RP2;
+        else if((op[7:4] == 4'hA) && (op[3:0] == 4'h9)) mcrom_sa = DCX_EA;
+        else if((op[7:4] == 4'h5) && (op[3:0] == 4'h4)) mcrom_sa = JMP;
+        else if( op[7:4] >  4'hB)                       mcrom_sa = JR;
+        
+        else if((op[7:4] == 4'h0) && (op[3:0] == 4'h0)) mcrom_sa = NOP;
+    end
+    else if(opcode_page == 3'd1) begin
+             if((op[7:4] == 4'h3) && (op[3:0] == 4'hB)) mcrom_sa = HLT;
+        else if((op[7:4] == 4'hB) && (op[3:0] == 4'hB)) mcrom_sa = STOP;
+    end
+    else if(opcode_page == 3'd4) begin
+             if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_RPA;
     end
 end
 
@@ -111,6 +126,7 @@ wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
 //MICROCODE TYPE 3 FIELDS
 wire    [4:0]   mc_s_nop         = mc_ctrl_output[13:9];
 wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
+wire    [1:0]   mc_s_suspension  = mc_ctrl_output[6:5];
 wire            mc_s_swap_md_in  = mc_ctrl_output[3];
 
 
@@ -319,7 +335,7 @@ end
 reg     [7:0]   mcrom_addr;
 always @(*) begin
     if(engine_state == WAIT_FOR_DECODING) mcrom_addr = mcrom_sa;
-    else mcrom_addr = mc_end_of_instruction ? NOP : {mcrom_sa[7:3], mc_cntr_next};
+    else mcrom_addr = mc_end_of_instruction ? ID : {mcrom_sa[7:3], mc_cntr_next};
 end
 
 
@@ -489,16 +505,16 @@ IKA87AD_microcode u_microcode (
 
 
     3. BOOKKEEPING OPERATION
-    10_X_X_R_XX_XX_XX_XX_XXX_XX
+    10_X_X_X_XX_XX_XX_XX_XXX_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13]: IACK
-    D[12:11]: c_comb MOD
+    D[12:11]: CARRY MOD
         00: NOP
         01: NOP
-        10: c_comb RESET
-        11: c_comb SET
+        10: CARRY RESET
+        11: CARRY SET
     D[10:9]: INTERRUPT
         00: NOP
         01: NOP
@@ -581,7 +597,7 @@ wire    [1:0]   rpa_incdec_addr = {reg_OPCODE[2], reg_OPCODE[0]};
 
 wire            reg_EAL_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA) ||                      //direct designation
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA) ||                      //direct designation
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd1) || //rp1 byte
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd1) || //rp1 word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd4) || //rp2 word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd4) || //rp1 word
                              alu_muldiv_reg_EA_wr;
@@ -607,45 +623,45 @@ wire            reg_B_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd2) || //r2 byte(mc0)
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd2) || //r2 byte(mc1)
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd2) || //r1 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1) || //rp2 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1) || //rp byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1);   //rp1 byte
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1) || //rp2 word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1) || //rp word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1);   //rp1 word
 
 wire            reg_C_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_C) ||                       //direct designation
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd3) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd3) || //r2 byte(mc0)
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd3) || //r2 byte(mc1)
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd3) || //r1 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1) || //rp2 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1) || //rp byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1);   //rp1 byte
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1) || //rp2 word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1) || //rp word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1);   //rp1 word
 
 wire            reg_D_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd4) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd4) || //r1 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 byte
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 word
                              (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2);    //rpa auto inc/dec condition
 
 wire            reg_E_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd5) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd5) || //r1 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 byte
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 word
                              (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2);    //rpa auto inc/dec condition
 
 wire            reg_H_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd6) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd6) || //r1 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 byte
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 word
                              (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3);    //rpa auto inc/dec condition
 
 wire            reg_L_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd7) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd7) || //r1 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 byte
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp word
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 word
                              (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3);    //rpa auto inc/dec condition
 
 wire            reg_wr_word_nbyte = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || //direct designation
@@ -658,7 +674,9 @@ wire            reg_wr_word_nbyte = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_E
 //PC/SP
 wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
                             (mc_type == MCTYPE3 && mc_s_cond_pc_dec);
-wire            reg_SP_wr = mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP;
+wire            reg_SP_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP ) ||                     //direct designation
+                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd0) || //rp2 word
+                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd0);
 
 //Memory IO related registers, MA=Memory Address, MD=Memory Data
 wire            reg_MA_dec_mode = mc_type == MCTYPE1 && mc_t1_alusel == 4'h8;
@@ -771,7 +789,7 @@ wire    [7:0]   reg_L = regpair_L[sel_HL];
 //  Arbitrarily made registers: unsure the original chip has them
 //
 
-reg     [15:0]  reg_INLATCH; //inlatch for data sampling
+reg     [15:0]  reg_MDI; //Memory Data input spare
 reg     [7:0]   reg_MDH, reg_MDL; //byte [15:8], word[15:0]
 reg     [15:0]  reg_TEMP;
 
@@ -830,7 +848,7 @@ always @(posedge emuclk) begin
                     reg_PC_inc_stop <= 1'b1;
                 end
 
-                if(reg_MA_dec_mode) reg_MA <= 1'b0;
+                if(reg_MA_dec_mode) reg_MA_inc_ndec <= 1'b0;
             end
         end
     end
@@ -937,7 +955,7 @@ end
 reg             md_dirty;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        reg_INLATCH <= 16'h0000;
+        reg_MDI <= 16'h0000;
         reg_MDL <= 8'h00;
         reg_MDH <= 8'h00;
         reg_OPCODE <= 8'h00;
@@ -971,13 +989,13 @@ always @(posedge emuclk) begin
             end
             else if(md_inlatch_tick) begin
                 if(md_dirty) begin
-                    if(md_in_byte_sel) reg_INLATCH[15:8] <= i_PD_I;
-                    else reg_INLATCH[7:0] <= i_PD_I;
+                    if(md_in_byte_sel) reg_MDI[15:8] <= i_PD_I;
+                    else reg_MDI[7:0] <= i_PD_I;
                 end
                 else begin
-                    if(md_in_byte_sel) reg_INLATCH[15:8] <= i_PD_I;
-                    else reg_INLATCH[7:0] <= i_PD_I;
-                    
+                    if(md_in_byte_sel) reg_MDI[15:8] <= i_PD_I;
+                    else reg_MDI[7:0] <= i_PD_I;
+
                     if(md_in_byte_sel) reg_MDH <= i_PD_I;
                     else reg_MDL <= i_PD_I;
                 end
@@ -1232,11 +1250,11 @@ always @(*) begin
             SB_MD         : alu_pb = {reg_MDH, reg_MDL};
             SB_A          : alu_pb = {8'h00, reg_A};
             SB_EA         : alu_pb = {reg_EAH, reg_EAL};
-            SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MD_swap_input_order ? reg_INLATCH[15:8] : reg_INLATCH[7:0]};
+            SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MD_swap_input_order ? reg_MDI[15:8] : reg_MDI[7:0]};
             SB_ADDR_TA    : alu_pb = {8'h00, 2'b10, reg_OPCODE[4:0], 1'b0};
-            SB_ADDR_FA    : alu_pb = {5'b00001, reg_OPCODE[2:0], reg_INLATCH[7:0]};
+            SB_ADDR_FA    : alu_pb = {5'b00001, reg_OPCODE[2:0], reg_MDI[7:0]};
             SB_ADDR_REL_S : alu_pb = {{11{reg_OPCODE[5]}}, reg_OPCODE[4:0]}; //sign extension
-            SB_ADDR_REL_L : alu_pb = {{8{reg_OPCODE[0]}}, reg_INLATCH[7:0]};
+            SB_ADDR_REL_L : alu_pb = {{8{reg_OPCODE[0]}}, reg_MDI[7:0]};
             SB_ADDR_INT   : alu_pb = int_addr; //selected externally
             SB_SUB2       : alu_pb = 16'hFFFE;
             SB_SUB1       : alu_pb = 16'hFFFF;
@@ -1335,7 +1353,7 @@ always @(*) begin
         case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
             4'b0000: begin alu_shifter[7] = 1'b0; 
                            alu_shifter[6:0] = alu_pb[7:1];
-                           alu_shifter_co = alu_pb[0]; end //SLRC, skip condition: c_comb
+                           alu_shifter_co = alu_pb[0]; end //SLRC, skip condition: CARRY
             4'b0001: ; //no instruction specified
             4'b0010: begin alu_shifter[7] = 1'b0; 
                            alu_shifter[6:0] = alu_pb[7:1];
@@ -1345,7 +1363,7 @@ always @(*) begin
                            alu_shifter_co = alu_pb[0]; end //RLR
             4'b0100: begin alu_shifter[0] = 1'b0; 
                            alu_shifter[7:1] = alu_pb[6:0];
-                           alu_shifter_co = alu_pb[7]; end //SLLC, skip condition: c_comb
+                           alu_shifter_co = alu_pb[7]; end //SLLC, skip condition: CARRY
             4'b0101: ; //no instruction specified
             4'b0110: begin alu_shifter[0] = 1'b0; 
                            alu_shifter[7:1] = alu_pb[6:0];
@@ -1427,12 +1445,14 @@ always @(*) begin
         end
         else if(mc_t0_alusel == 2'd1) begin
             alu_ma_output = alu_adder_out;
+            alu_output = alu_adder_out;
+            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
         end
         else begin
             case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
                 4'h0: alu_output = alu_pb;                        //MVI(move)
                 4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
-                4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO c_comb)
+                4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
                 4'h3: begin alu_output = alu_adder_out;           //SUBNB(check skip condition: NO BORROW; 2's complement)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
@@ -1447,20 +1467,20 @@ always @(*) begin
                 4'h7: begin alu_output = alu_adder_out;           //SUB with borrow
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= ~flag_CY; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'h8: alu_temp_output = alu_pa & alu_pb;          //AND(bitwise AND)
-                4'h9: alu_temp_output = alu_pa | alu_pb;          //OR(bitwise OR)
+                4'h8: alu_output = alu_pa & alu_pb;               //AND(bitwise AND)
+                4'h9: alu_output = alu_pa | alu_pb;               //OR(bitwise OR)
                 4'hA: begin alu_temp_output = alu_adder_out;      //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b0; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'hB: begin alu_temp_output = alu_adder_out;      //SLT(skip if less than; check skip condition: BORROW; 2's complement)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1;
                             alu_adder_borrow_mode = 1'b1; end
-                4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO z_comb)
-                4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: z_comb)
-                4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO z_comb)
+                4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO ZERO)
+                4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: ZERO)
+                4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO ZERO)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: z_comb)
+                4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: ZERO)
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
             endcase
@@ -1591,7 +1611,7 @@ end
 //flow. Use two-stage DFF to change the flags "after" the current instruction.
 
 //combinational
-reg             z_comb, c_comb, hc_comb;
+reg             z_comb, c_comb, hc_comb, sk_comb;
 
 //temporary latch
 reg             z_temp, c_temp, hc_temp, sk_temp;
@@ -1661,8 +1681,15 @@ always @(posedge emuclk) begin
         flag_CY <= 1'b0; //reset
     end
     else begin
-        if(cycle_tick) if(mc_alter_flag) c_temp <= c_comb;
-        if(cycle_tick) if(mc_end_of_instruction) flag_CY <= c_temp;
+        if(cycle_tick) begin
+            if(mc_alter_flag) begin
+                if(mc_end_of_instruction) begin flag_CY <= c_comb; c_temp <= c_comb; end
+                else c_temp <= c_comb;
+            end
+            else begin
+                if(mc_end_of_instruction) flag_CY <= c_temp;
+            end
+        end
     end
 end
 
@@ -1706,8 +1733,15 @@ always @(posedge emuclk) begin
         flag_HC <= 1'b0; //reset
     end
     else begin
-        if(cycle_tick) if(mc_alter_flag) hc_temp <= hc_comb;
-        if(cycle_tick) if(mc_end_of_instruction) flag_HC <= hc_temp;
+        if(cycle_tick) begin
+            if(mc_alter_flag) begin
+                if(mc_end_of_instruction) begin flag_HC <= hc_comb; hc_temp <= hc_comb; end
+                else hc_temp <= hc_comb;
+            end
+            else begin
+                if(mc_end_of_instruction) flag_HC <= hc_temp;
+            end
+        end
     end
 end
 
@@ -1722,6 +1756,55 @@ always @(*) begin
     endcase
 end
 
+always @(*) begin
+    sk_comb = 1'b0;
+
+    if(mc_alter_flag) begin
+        if(mc_type == MCTYPE0) begin
+            if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
+                case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
+                    4'h2: sk_comb = ~c_comb; //ADDNC(skip condition: NO CARRY)
+                    4'h3: sk_comb = ~c_comb; //SUBNB(skip condition: NO BORROW)
+                    4'hA: sk_comb = ~c_comb; //SGT(skip condition: NO BORROW)
+                    4'hB: sk_comb = c_comb;  //SLT(skip condition: BORROW)
+                    4'hC: sk_comb = ~z_comb; //AND(skip condition: NO ZERO)
+                    4'hD: sk_comb = z_comb;  //OR(skip condition: ZERO)
+                    4'hE: sk_comb = ~z_comb; //SNE(skip condition: NO ZERO)
+                    4'hF: sk_comb = z_comb;  //SEQ(skip condition: ZERO)
+                    default: sk_comb = 1'b0;
+                endcase
+            end
+        end
+        else if(mc_type == MCTYPE1) begin
+            if(mc_t1_alusel == 4'h7) begin //shift 
+                case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
+                    4'b0000: sk_comb <= c_comb; //SLRC, skip condition: CARRY
+                    4'b0100: sk_comb <= c_comb; //SLLC, skip condition: CARRY
+                    default: sk_comb <= 1'b0;
+                endcase
+            end
+            else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: CARRY
+                sk_comb = c_comb;
+            end
+            else if(mc_t1_alusel == 4'hC) begin //DEC, skip condition: BORROW
+                sk_comb = c_comb;
+            end
+        end
+        else if(mc_type == MCTYPE2) begin
+            case(mc_bk_skip_ctrl)
+                3'b000: ;
+                3'b001: sk_comb = skip_flag;  //SK
+                3'b010: sk_comb = ~skip_flag; //SKN
+                3'b011: sk_comb = reg_MDL[reg_OPCODE[2:0]]; //BIT
+                3'b100: sk_comb = iflag_muxed; //SKIT
+                3'b101: sk_comb = ~iflag_muxed; //SKNIT
+                3'b110: ;
+                3'b111: ;
+            endcase
+        end
+    end
+end
+
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         sk_temp <= 1'b0;
@@ -1729,55 +1812,12 @@ always @(posedge emuclk) begin
     end
     else begin
         if(cycle_tick) begin
-            if(mc_end_of_instruction) begin
-                sk_temp <= 1'b0;
-                flag_SK <= sk_temp;
+            if(mc_alter_flag) begin
+                if(mc_end_of_instruction) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
+                else sk_temp <= sk_comb;
             end
             else begin
-                if(mc_alter_flag) begin
-                    if(mc_type == MCTYPE0) begin
-                        if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
-                            case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
-                                4'h2: sk_temp <= ~c_comb; //ADDNC(skip condition: NO c_comb)
-                                4'h3: sk_temp <= ~c_comb; //SUBNB(skip condition: NO BORROW)
-                                4'hA: sk_temp <= ~c_comb; //SGT(skip condition: NO BORROW)
-                                4'hB: sk_temp <= c_comb;  //SLT(skip condition: BORROW)
-                                4'hC: sk_temp <= ~z_comb; //AND(skip condition: NO z_comb)
-                                4'hD: sk_temp <= z_comb;  //OR(skip condition: z_comb)
-                                4'hE: sk_temp <= ~z_comb; //SNE(skip condition: NO z_comb)
-                                4'hF: sk_temp <= z_comb;  //SEQ(skip condition: z_comb)
-                                default: sk_temp <= 1'b0;
-                            endcase
-                        end
-                    end
-                    else if(mc_type == MCTYPE1) begin
-                        if(mc_t1_alusel == 4'h7) begin //shift 
-                            case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
-                                4'b0000: sk_temp <= c_comb; //SLRC, skip condition: c_comb
-                                4'b0100: sk_temp <= c_comb; //SLLC, skip condition: c_comb
-                                default: sk_temp <= 1'b0;
-                            endcase
-                        end
-                        else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: c_comb
-                            sk_temp = c_comb;
-                        end
-                        else if(mc_t1_alusel == 4'hC) begin //DEC, skip condition: BORROW
-                            sk_temp = c_comb;
-                        end
-                    end
-                    else if(mc_type == MCTYPE2) begin
-                        case(mc_bk_skip_ctrl)
-                            3'b000: ;
-                            3'b001: sk_temp = skip_flag;  //SK
-                            3'b010: sk_temp = ~skip_flag; //SKN
-                            3'b011: sk_temp = reg_MDL[reg_OPCODE[2:0]]; //BIT
-                            3'b100: sk_temp = iflag_muxed; //SKIT
-                            3'b101: sk_temp = ~iflag_muxed; //SKNIT
-                            3'b110: ;
-                            3'b111: ;
-                        endcase
-                    end
-                end
+                if(mc_end_of_instruction) flag_SK <= sk_temp;
             end
         end
     end

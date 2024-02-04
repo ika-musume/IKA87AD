@@ -42,6 +42,7 @@ localparam SB_SR2        = 5'b00111;
 localparam SB_SR4        = 5'b01000;
 localparam SB_MDH        = 5'b01001;
 localparam SB_MD         = 5'b01010;
+localparam SB_MDI        = 5'b01011;
 localparam SB_A          = 5'b01110;
 localparam SB_EA         = 5'b01111;
 localparam SB_ADDR_V_WA  = 5'b10001;
@@ -85,9 +86,11 @@ localparam SD_PSW        = 4'b1001;
 localparam SD_RPA        = 4'b1111;
 
 //MICROCODE ROUTINE ENTRANCE ADDRESS
-localparam MVI_R_BYTE       = 8'd000;
-localparam STAX_RPA         = 8'd002;
-localparam LDAX_RPA         = 8'd004;
+
+//2-cycle opcode group
+localparam MVI_R_IM         = 8'd000;
+localparam STAX_RPA_A       = 8'd002;
+localparam LDAX_A_RPA       = 8'd004;
 localparam LXI              = 8'd006;
 localparam INX_RP2          = 8'd008; //RP2 actually
 localparam INX_EA           = 8'd010;
@@ -95,8 +98,15 @@ localparam DCX_RP2          = 8'd012;
 localparam DCX_EA           = 8'd014;
 localparam JMP              = 8'd016;
 localparam JR               = 8'd018;
-localparam HLT              = 8'd020;
-localparam STOP             = 8'd022;
-localparam ALUX_RPA         = 8'd024;
+localparam ALUX_A_RPA       = 8'd020;
+localparam ALUI_A_IM        = 8'd022;
+localparam ALUI_R_IM        = 8'd024;
+localparam EALU_EA_R2       = 8'd026;
+localparam DALU_EA_RP       = 8'd028;
+localparam SUSP             = 8'd030; //HLT or STOP
+
+//4-cycle opcode group
+localparam MOV_MEM_R        = 8'd032;
+
 localparam NOP              = 8'd254;
-localparam ID               = 8'd255;
+localparam IRD              = 8'd255;

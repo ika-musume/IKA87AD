@@ -60,26 +60,36 @@ reg     [7:0]   reg_FULL_OPCODE_debug[0:3]; //wtf
 reg     [7:0]   mcrom_sa; //microcode rom start address
 always @(*) begin
     if(opcode_page == 3'd0) begin
-             if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mcrom_sa = ID;
-        else if((op[7:4] == 4'h6) && (op[3:0] >  4'h7)) mcrom_sa = MVI_R_BYTE;
-        else if((op[7:4] == 4'h3) && (op[3:0] >  4'h8)) mcrom_sa = STAX_RPA;
-        else if((op[7:4] == 4'h2) && (op[3:0] >  4'h8)) mcrom_sa = LDAX_RPA;
-        else if((op[7:4] <  4'h5) && (op[3:0] == 4'h4)) mcrom_sa = LXI;
-        else if((op[7:4] <  4'h4) && (op[3:0] == 4'h2)) mcrom_sa = INX_RP2;
-        else if((op[7:4] == 4'hA) && (op[3:0] == 4'h8)) mcrom_sa = INX_EA;
-        else if((op[7:4] <  4'h4) && (op[3:0] == 4'h3)) mcrom_sa = DCX_RP2;
-        else if((op[7:4] == 4'hA) && (op[3:0] == 4'h9)) mcrom_sa = DCX_EA;
-        else if((op[7:4] == 4'h5) && (op[3:0] == 4'h4)) mcrom_sa = JMP;
-        else if( op[7:4] >  4'hB)                       mcrom_sa = JR;
+             if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mcrom_sa = IRD;
+        else if( op[7:4] == 4'h6  &&  op[3:0] >  4'h7 ) mcrom_sa = MVI_R_IM;
+        else if( op[7:4] == 4'h3  &&  op[3:0] >  4'h8 ) mcrom_sa = STAX_RPA_A;
+        else if( op[7:4] == 4'h2  &&  op[3:0] >  4'h8 ) mcrom_sa = LDAX_A_RPA;
+        else if( op[7:4] <  4'h5  &&  op[3:0] == 4'h4 ) mcrom_sa = LXI;
+        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'h2 ) mcrom_sa = INX_RP2;
+        else if( op[7:4] == 4'hA  &&  op[3:0] == 4'h8 ) mcrom_sa = INX_EA;
+        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'h3 ) mcrom_sa = DCX_RP2;
+        else if( op[7:4] == 4'hA  &&  op[3:0] == 4'h9 ) mcrom_sa = DCX_EA;
+        else if( op[7:4] == 4'h5  &&  op[3:0] == 4'h4 ) mcrom_sa = JMP;
+        else if( op[7:4] >  4'hB                      ) mcrom_sa = JR;
+        else if( op[7:4] <  4'h8  &&
+                (op[3:0] == 4'h6  ||  op[3:0] == 4'h7)) mcrom_sa = ALUI_A_IM;
         
-        else if((op[7:4] == 4'h0) && (op[3:0] == 4'h0)) mcrom_sa = NOP;
+        else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
+        else                                            mcrom_sa = NOP;
     end
     else if(opcode_page == 3'd1) begin
-             if((op[7:4] == 4'h3) && (op[3:0] == 4'hB)) mcrom_sa = HLT;
-        else if((op[7:4] == 4'hB) && (op[3:0] == 4'hB)) mcrom_sa = STOP;
+             if((op[7:4] == 4'h3  ||  op[7:4] == 4'hB) &&
+                (op[3:0] == 4'hB))                      mcrom_sa = SUSP;
     end
     else if(opcode_page == 3'd4) begin
-             if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_RPA;
+             if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_A_RPA;
+        else if((op[7:4] == 4'h4  &&  op[3:0] <  4'h4) ||
+                (op[7:4] == 4'h6  &&  op[3:0] <  4'h4)) mcrom_sa = EALU_EA_R2;
+        else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_MEM_R;
+    end
+    else if(opcode_page == 3'd5) begin
+             if( op[7:4] <  4'h8)                       mcrom_sa = ALUI_R_IM;
+        else if( op[7:4] >  4'h7  &&  op[2]   == 1'b1 ) mcrom_sa = DALU_EA_RP;
     end
 end
 
@@ -120,14 +130,21 @@ wire            mc_bk_iack       = mc_ctrl_output[13];
 wire    [1:0]   mc_bk_carry_ctrl = mc_ctrl_output[12:11];
 wire    [1:0]   mc_bk_int_ctrl   = mc_ctrl_output[10:9];
 wire    [1:0]   mc_bk_reg_exchg  = mc_ctrl_output[8:7];
-wire    [1:0]   mc_bk_cpu_ctrl   = mc_ctrl_output[6:5];
+wire            mc_bk_cpu_susp   = mc_ctrl_output[6];
 wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
 wire    [4:0]   mc_s_nop         = mc_ctrl_output[13:9];
 wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
-wire    [1:0]   mc_s_suspension  = mc_ctrl_output[6:5];
+wire            mc_s_cond_read   = mc_ctrl_output[7];
+wire    [2:0]   mc_s_cond_branch = mc_ctrl_output[6:4];
 wire            mc_s_swap_md_in  = mc_ctrl_output[3];
+
+//ALU FIELDS
+wire    [3:0]   arith_code = mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
+wire    [3:0]   shift_code = shift_code;
+wire            arith_grp_comp = arith_code == 8'hA || arith_code == 8'hB || arith_code == 8'hC || arith_code == 8'hD ||
+                                 arith_code == 8'hE || arith_code == 8'hF || arith_code == 8'h2 || arith_code == 8'h3;
 
 
 
@@ -327,6 +344,10 @@ always @(*) begin
         if(engine_suspension_cntr == mc_s_nop[3:0]) mc_cntr_next = mc_cntr + 3'd1;
         else mc_cntr_next = mc_cntr;
     end
+    else if(mc_type == MCTYPE3 && mc_s_cond_branch[2]) begin
+        if(arith_grp_comp) mc_cntr_next = mc_cntr + 3'd1 + ({1'b0, mc_s_cond_branch[1:0]} + 3'd1);
+        else mc_cntr_next = mc_cntr + 3'd1;
+    end
     else begin
         mc_cntr_next = mc_cntr + 3'd1;
     end
@@ -335,7 +356,7 @@ end
 reg     [7:0]   mcrom_addr;
 always @(*) begin
     if(engine_state == WAIT_FOR_DECODING) mcrom_addr = mcrom_sa;
-    else mcrom_addr = mc_end_of_instruction ? ID : {mcrom_sa[7:3], mc_cntr_next};
+    else mcrom_addr = mc_end_of_instruction ? IRD : {mcrom_sa[7:3], mc_cntr_next};
 end
 
 
@@ -372,7 +393,7 @@ IKA87AD_microcode u_microcode (
         01000: () sr4, OPCODE[0]
         01001: (b) MD_high_byte
         01010: (w) MD_word
-        01011:
+        01011: (w) MD_spare(MDI)
         01100:
         01101:
         01110: (w) A
@@ -525,11 +546,8 @@ IKA87AD_microcode u_microcode (
         01: EXX
         10: EXA
         11: EXH
-    D[6:5]: CPU control
-        00: NOP
-        01: HLT
-        10: STOP
-        11: reserved
+    D[6]: CPU control - suspension
+    D[5]: reserved
     D[4:2]: SKIP control
         000: NOP
         001: SK
@@ -554,8 +572,7 @@ IKA87AD_microcode u_microcode (
     D[12:9]: nop cycles 0=>1cycle, 15=16cycles
     D[8]: conditional PC decrement(BLOCK)
     D[7]: conditional read(rpa+byte or register)
-    D[6]: conditional branch on ALU type
-    D[5:4]: branch+ steps 0=>+2 3=>+5
+    D[6:4]: conditional branch on ALU type, branch+ steps [5:4]0=>+2 3=>+5
     D[3]: swap MD input order
     D[1:0] current bus transaction type :
         00: IDLE
@@ -1248,6 +1265,7 @@ always @(*) begin
             SB_SR4        : alu_pb = 16'h0000; //to be fixed
             SB_MDH        : alu_pb = {8'h00, reg_MDH};
             SB_MD         : alu_pb = {reg_MDH, reg_MDL};
+            SB_MDI        : alu_pb = reg_MDI;
             SB_A          : alu_pb = {8'h00, reg_A};
             SB_EA         : alu_pb = {reg_EAH, reg_EAL};
             SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MD_swap_input_order ? reg_MDI[15:8] : reg_MDI[7:0]};
@@ -1350,7 +1368,7 @@ always @(*) begin
     alu_shifter_co = 1'b0;
 
     if(mc_type == MCTYPE1) if(mc_t1_alusel == 4'h6) begin
-        case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
+        case(shift_code)
             4'b0000: begin alu_shifter[7] = 1'b0; 
                            alu_shifter[6:0] = alu_pb[7:1];
                            alu_shifter_co = alu_pb[0]; end //SLRC, skip condition: CARRY
@@ -1441,7 +1459,8 @@ always @(*) begin
     //pa = first operand, pb = second operand, like Vwa
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd0) begin
-            alu_output = alu_pb; //out<-pb bypass
+            alu_ma_output = alu_pb; //out<-pb bypass
+            alu_output = alu_pb;
         end
         else if(mc_t0_alusel == 2'd1) begin
             alu_ma_output = alu_adder_out;
@@ -1449,7 +1468,7 @@ always @(*) begin
             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
         end
         else begin
-            case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
+            case(arith_code)
                 4'h0: alu_output = alu_pb;                        //MVI(move)
                 4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
                 4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
@@ -1647,7 +1666,7 @@ always @(*) begin
 
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
-            case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
+            case(arith_code)
                 4'h2: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADDNC
                 4'h3: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUBNB
                 4'h4: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADD
@@ -1699,7 +1718,7 @@ always @(*) begin
 
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
-            case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
+            case(arith_code)
                 4'h2: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADDNC
                 4'h3: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //SUBNB
                 4'h4: hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode; //ADD
@@ -1762,7 +1781,7 @@ always @(*) begin
     if(mc_alter_flag) begin
         if(mc_type == MCTYPE0) begin
             if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
-                case(mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]})
+                case(arith_code)
                     4'h2: sk_comb = ~c_comb; //ADDNC(skip condition: NO CARRY)
                     4'h3: sk_comb = ~c_comb; //SUBNB(skip condition: NO BORROW)
                     4'hA: sk_comb = ~c_comb; //SGT(skip condition: NO BORROW)
@@ -1777,10 +1796,10 @@ always @(*) begin
         end
         else if(mc_type == MCTYPE1) begin
             if(mc_t1_alusel == 4'h7) begin //shift 
-                case({reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]})
-                    4'b0000: sk_comb <= c_comb; //SLRC, skip condition: CARRY
-                    4'b0100: sk_comb <= c_comb; //SLLC, skip condition: CARRY
-                    default: sk_comb <= 1'b0;
+                case(shift_code)
+                    4'b0000: sk_comb = c_comb; //SLRC, skip condition: CARRY
+                    4'b0100: sk_comb = c_comb; //SLLC, skip condition: CARRY
+                    default: sk_comb = 1'b0;
                 endcase
             end
             else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: CARRY
@@ -1817,7 +1836,8 @@ always @(posedge emuclk) begin
                 else sk_temp <= sk_comb;
             end
             else begin
-                if(mc_end_of_instruction) flag_SK <= sk_temp;
+                if(mc_jump_to_next_inst) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
+                else begin if(mc_end_of_instruction) flag_SK <= sk_temp; end
             end
         end
     end
@@ -1864,7 +1884,7 @@ always @(*) begin
         mc_ctrl_output[17:2] = mcrom_data[17:2];
 
         //next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte
-        if(mc_type == MCTYPE3 && mc_ctrl_output[7]) mc_ctrl_output[1:0] = (reg_OPCODE[0] & reg_OPCODE[1]) ? RD3 : mcrom_data[1:0];
+        if(mc_type == MCTYPE3 && mc_s_cond_read) mc_ctrl_output[1:0] = (reg_OPCODE[0] & reg_OPCODE[1]) ? RD3 : mcrom_data[1:0];
         else mc_ctrl_output[1:0] = mcrom_data[1:0];
     end
 end

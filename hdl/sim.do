@@ -23,26 +23,26 @@ add wave -noupdate -expand -group BUS /IKA87AD_tb/u_dut/o_RD_n
 add wave -noupdate -expand -group BUS /IKA87AD_tb/u_dut/o_WR_n
 add wave -noupdate -expand -group BUS -radix hexadecimal /IKA87AD_tb/u_dut/o_FULL_ADDRESS_DEBUG
 add wave -noupdate -expand -group BUS -radix hexadecimal /IKA87AD_tb/u_dut/o_OUTPUT_DATA_DEBUG
-add wave -noupdate -expand -group BUS /IKA87AD_tb/u_dut/reg_MDI
+add wave -noupdate -expand -group BUS -radix hexadecimal /IKA87AD_tb/u_dut/reg_MDI
 add wave -noupdate -expand -group BUS -radix hexadecimal /IKA87AD_tb/u_dut/reg_MDH
 add wave -noupdate -expand -group BUS -radix hexadecimal /IKA87AD_tb/u_dut/reg_MDL
 add wave -noupdate -expand -group BUS -radix hexadecimal -childformat {{{/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[0]} -radix hexadecimal} {{/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[1]} -radix hexadecimal} {{/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[2]} -radix hexadecimal} {{/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[3]} -radix hexadecimal}} -subitemconfig {{/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[0]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[1]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[2]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug[3]} {-height 15 -radix hexadecimal}} /IKA87AD_tb/u_dut/reg_FULL_OPCODE_debug
-add wave -noupdate -expand -group {MC ENGINE} /IKA87AD_tb/u_dut/mc_end_of_instruction
-add wave -noupdate -expand -group {MC ENGINE} /IKA87AD_tb/u_dut/engine_state
-add wave -noupdate -expand -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/engine_suspension_cntr
-add wave -noupdate -expand -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/opcode_page
-add wave -noupdate -expand -group {MC ENGINE} /IKA87AD_tb/u_dut/opcode_inlatch_tick
-add wave -noupdate -expand -group {MC ENGINE} -radix hexadecimal /IKA87AD_tb/u_dut/reg_OPCODE
-add wave -noupdate -expand -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/mcrom_sa
-add wave -noupdate -expand -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/mc_cntr
-add wave -noupdate -expand -group {MC ENGINE} /IKA87AD_tb/u_dut/mcrom_read_tick
-add wave -noupdate -expand -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/mcrom_addr
-add wave -noupdate -expand -group {MC ENGINE} /IKA87AD_tb/u_dut/mcrom_data
-add wave -noupdate -expand -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_op0
-add wave -noupdate -expand -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_op1
-add wave -noupdate -expand -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_out
-add wave -noupdate -expand -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_output
-add wave -noupdate -expand -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_ma_output
+add wave -noupdate -group {MC ENGINE} /IKA87AD_tb/u_dut/mc_end_of_instruction
+add wave -noupdate -group {MC ENGINE} /IKA87AD_tb/u_dut/engine_state
+add wave -noupdate -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/engine_suspension_cntr
+add wave -noupdate -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/opcode_page
+add wave -noupdate -group {MC ENGINE} /IKA87AD_tb/u_dut/opcode_inlatch_tick
+add wave -noupdate -group {MC ENGINE} -radix hexadecimal /IKA87AD_tb/u_dut/reg_OPCODE
+add wave -noupdate -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/mcrom_sa
+add wave -noupdate -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/mc_cntr
+add wave -noupdate -group {MC ENGINE} /IKA87AD_tb/u_dut/mcrom_read_tick
+add wave -noupdate -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/mcrom_addr
+add wave -noupdate -group {MC ENGINE} /IKA87AD_tb/u_dut/mcrom_data
+add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_op0
+add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_op1
+add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_out
+add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_output
+add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_ma_output
 add wave -noupdate -group {MC CTRL OUTPUT} /IKA87AD_tb/u_dut/mc_ctrl_output
 add wave -noupdate -group {MC CTRL OUTPUT} /IKA87AD_tb/u_dut/mc_type
 add wave -noupdate -group {MC CTRL OUTPUT} /IKA87AD_tb/u_dut/mc_alter_flag
@@ -64,10 +64,10 @@ add wave -noupdate -group {REGFILE WR} /IKA87AD_tb/u_dut/reg_D_wr
 add wave -noupdate -group {REGFILE WR} /IKA87AD_tb/u_dut/reg_E_wr
 add wave -noupdate -group {REGFILE WR} /IKA87AD_tb/u_dut/reg_H_wr
 add wave -noupdate -group {REGFILE WR} /IKA87AD_tb/u_dut/reg_L_wr
-add wave -noupdate -expand -group {REGFILE PCSP} -radix hexadecimal /IKA87AD_tb/u_dut/reg_PC
-add wave -noupdate -expand -group {REGFILE PCSP} -radix hexadecimal /IKA87AD_tb/u_dut/reg_SP
-add wave -noupdate -expand -group {REGFILE PCSP} /IKA87AD_tb/u_dut/reg_MA_inc_ndec
-add wave -noupdate -expand -group {REGFILE PCSP} -radix hexadecimal /IKA87AD_tb/u_dut/reg_MA
+add wave -noupdate -group {REGFILE PCSP} -radix hexadecimal /IKA87AD_tb/u_dut/reg_PC
+add wave -noupdate -group {REGFILE PCSP} -radix hexadecimal /IKA87AD_tb/u_dut/reg_SP
+add wave -noupdate -group {REGFILE PCSP} /IKA87AD_tb/u_dut/reg_MA_inc_ndec
+add wave -noupdate -group {REGFILE PCSP} -radix hexadecimal /IKA87AD_tb/u_dut/reg_MA
 add wave -noupdate -expand -group {REGFILE VAEA} /IKA87AD_tb/u_dut/sel_VAEA
 add wave -noupdate -expand -group {REGFILE VAEA} -radix hexadecimal {/IKA87AD_tb/u_dut/regpair_EAH[0]}
 add wave -noupdate -expand -group {REGFILE VAEA} -radix hexadecimal {/IKA87AD_tb/u_dut/regpair_EAL[0]}
@@ -92,7 +92,7 @@ add wave -noupdate -expand -group {REGFILE HL} -radix hexadecimal {/IKA87AD_tb/u
 add wave -noupdate -expand -group {REGFILE HL} -radix hexadecimal {/IKA87AD_tb/u_dut/regpair_H[1]}
 add wave -noupdate -expand -group {REGFILE HL} -radix hexadecimal {/IKA87AD_tb/u_dut/regpair_L[1]}
 TreeUpdate [SetDefaultTree]
-WaveRestoreCursors {{Cursor 1} {7130 ps} 0}
+WaveRestoreCursors {{Cursor 1} {9360 ps} 0}
 quietly wave cursor active 1
 configure wave -namecolwidth 150
 configure wave -valuecolwidth 100
@@ -108,4 +108,4 @@ configure wave -griddelta 40
 configure wave -timeline 0
 configure wave -timelineunits ps
 update
-WaveRestoreZoom {0 ps} {11620 ps}
+WaveRestoreZoom {4690 ps} {16030 ps}

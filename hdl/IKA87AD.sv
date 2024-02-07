@@ -64,7 +64,7 @@ always @(*) begin
         else if( op[7:4] == 4'h6  &&  op[3:0] >  4'h7 ) mcrom_sa = MVI_R_IM;
         else if( op[7:4] == 4'h3  &&  op[3:0] >  4'h8 ) mcrom_sa = STAX_RPA_A;
         else if( op[7:4] == 4'h2  &&  op[3:0] >  4'h8 ) mcrom_sa = LDAX_A_RPA;
-        else if( op[7:4] <  4'h5  &&  op[3:0] == 4'h4 ) mcrom_sa = LXI;
+        else if( op[7:4] <  4'h5  &&  op[3:0] == 4'h4 ) mcrom_sa = LXI_RP2_IM;
         else if( op[7:4] <  4'h4  &&  op[3:0] == 4'h2 ) mcrom_sa = INX_RP2;
         else if( op[7:4] == 4'hA  &&  op[3:0] == 4'h8 ) mcrom_sa = INX_EA;
         else if( op[7:4] <  4'h4  &&  op[3:0] == 4'h3 ) mcrom_sa = DCX_RP2;
@@ -73,7 +73,11 @@ always @(*) begin
         else if( op[7:4] >  4'hB                      ) mcrom_sa = JR;
         else if( op[7:4] <  4'h8  &&
                 (op[3:0] == 4'h6  ||  op[3:0] == 4'h7)) mcrom_sa = ALUI_A_IM;
-        
+        else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h1 ) mcrom_sa = MVIW_WA_IM;
+        else if( op[7:4] == 4'hB  &&  op[3:0] >  4'hA ) mcrom_sa = STAX_RPA2_A;
+        else if( op[7:4] == 4'hA  &&  op[3:0] >  4'hA ) mcrom_sa = LDAX_A_RPA2;
+        else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h1 ) mcrom_sa = BLOCK;
+
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
         else                                            mcrom_sa = NOP;
     end
@@ -86,6 +90,7 @@ always @(*) begin
         else if((op[7:4] == 4'h4  &&  op[3:0] <  4'h4) ||
                 (op[7:4] == 4'h6  &&  op[3:0] <  4'h4)) mcrom_sa = EALU_EA_R2;
         else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_MEM_R;
+        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'hF ) mcrom_sa = LD_RP_MEM;
     end
     else if(opcode_page == 3'd5) begin
              if( op[7:4] <  4'h8)                       mcrom_sa = ALUI_R_IM;
@@ -109,7 +114,7 @@ reg     [17:0]  mc_ctrl_output; //combinational
 //fixed fields
 wire    [1:0]   mc_type = mc_ctrl_output[17:16];
 wire            mc_alter_flag = mcrom_data[15];
-wire            mc_jump_to_next_inst = mcrom_data[14];
+wire            mc_jump_to_next_inst;
 
 //bus control signals
 wire    [1:0]   mc_next_bus_acc = mc_ctrl_output[1:0];
@@ -138,11 +143,11 @@ wire    [4:0]   mc_s_nop         = mc_ctrl_output[13:9];
 wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
 wire            mc_s_cond_read   = mc_ctrl_output[7];
 wire    [2:0]   mc_s_cond_branch = mc_ctrl_output[6:4];
-wire            mc_s_swap_md_in  = mc_ctrl_output[3];
+wire            mc_s_swap_md_out = mc_ctrl_output[3];
 
 //ALU FIELDS
 wire    [3:0]   arith_code = mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
-wire    [3:0]   shift_code = shift_code;
+wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]};
 wire            arith_grp_comp = arith_code == 8'hA || arith_code == 8'hB || arith_code == 8'hC || arith_code == 8'hD ||
                                  arith_code == 8'hE || arith_code == 8'hF || arith_code == 8'h2 || arith_code == 8'h3;
 
@@ -359,6 +364,9 @@ always @(*) begin
     else mcrom_addr = mc_end_of_instruction ? IRD : {mcrom_sa[7:3], mc_cntr_next};
 end
 
+assign  mc_jump_to_next_inst = (mc_type == MCTYPE3 && mc_s_nop[4]) ? mcrom_data[14] & engine_suspension_cntr == mc_s_nop[3:0] :
+                                                                     mcrom_data[14];
+
 
 
 ///////////////////////////////////////////////////////////
@@ -573,7 +581,7 @@ IKA87AD_microcode u_microcode (
     D[8]: conditional PC decrement(BLOCK)
     D[7]: conditional read(rpa+byte or register)
     D[6:4]: conditional branch on ALU type, branch+ steps [5:4]0=>+2 3=>+5
-    D[3]: swap MD input order
+    D[3]: swap MD output order
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -658,42 +666,49 @@ wire            reg_D_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 word
-                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2);    //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2)  || //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_DE  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
 
 wire            reg_E_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd5) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd5) || //r1 byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 word
-                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2);    //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2)  || //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_DE  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
 
 wire            reg_H_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd6) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd6) || //r1 byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 word
-                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3);    //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3)  || //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_HL  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
 
 wire            reg_L_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd7) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd7) || //r1 byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 word
-                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3);    //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3)  || //rpa auto inc/dec condition
+                             (mc_type == MCTYPE1 && mc_sd == SD_HL  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
 
 wire            reg_wr_word_nbyte = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || //direct designation
                                     (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA ) || //direct designation
                                     (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2) || 
                                     (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP ) || 
                                     (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1) || 
-                                    (mc_type == MCTYPE1 && mc_sd == SD_RPA);
+                                    (mc_type == MCTYPE1 && mc_sd == SD_RPA)         ||
+                                    (mc_type == MCTYPE1 && mc_sd == SD_DE)          ||
+                                    (mc_type == MCTYPE1 && mc_sd == SD_HL);
 
 //PC/SP
 wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
                             (mc_type == MCTYPE3 && mc_s_cond_pc_dec);
-wire            reg_SP_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP ) ||                     //direct designation
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd0) || //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd0);
+wire            reg_SP_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP ) ||                      //direct designation
+                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd0) ||  //rp2 word
+                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd0) ||
+                            (mc_type == MCTYPE1 && mc_sd == SD_SP  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
 
 //Memory IO related registers, MA=Memory Address, MD=Memory Data
 wire            reg_MA_dec_mode = mc_type == MCTYPE1 && mc_t1_alusel == 4'h8;
@@ -707,8 +722,12 @@ wire            reg_MDL_wr  =   (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL 
                                 (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDL || mc_sc_dst == SC_DST_MD));
 wire            reg_MDH_wr  =   (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
                                 (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD);
-wire            reg_MD_swap_input_order = mc_type == MCTYPE3 && mc_s_swap_md_in; //swaps MD input order, from lo->hi to hi->lo
-wire            reg_MD_swap_output_order = mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000; //swaps MD output order, push MD to stack
+
+//swaps MD output order, push to stack or V_wa addressing
+wire            reg_MD_swap_output_order = (mc_type == MCTYPE3 && mc_s_swap_md_out) || 
+                                           (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000); 
+wire            reg_MD_swap_input_order  = mc_type == MCTYPE3 && mc_s_cond_read;
+
 
 //ALU control
 wire            alu_mul_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
@@ -957,8 +976,7 @@ always @(posedge emuclk) begin
                     if(current_bus_acc == WR3) md_out_byte_sel <= ~md_out_byte_sel;
                 end
 
-                //swap input data order(to HI->LO) when the bookkeeping bit is hot, this is for WA, BYTE instruction
-                if(reg_MD_swap_input_order) md_in_byte_sel <= 1'b1;
+                if(reg_MD_swap_input_order) md_in_byte_sel <= 1'b1; //for rpa2 DE/HL+byte addressing mode
                 else begin
                     if(current_bus_acc == RD3) md_in_byte_sel <= ~md_in_byte_sel;
                 end
@@ -992,16 +1010,23 @@ always @(posedge emuclk) begin
             end
             //Memory Data register load
             if(cycle_tick) begin
-                if(reg_MDL_wr_A) begin //save A to MDL(rpa2, stax)
-                    reg_MDL <= reg_A;
-                end
-                else if(reg_MD_wr_EA) begin //save EA to MD(rpa2, steax)
-                    reg_MDL <= reg_EAL;
-                    reg_MDH <= reg_EAH;
+                if(mc_end_of_instruction) begin
+                    reg_MDI <= 16'h0000;
+                    reg_MDH <= 8'h00;
+                    reg_MDL <= 8'h00;
                 end
                 else begin
-                    if(reg_MDL_wr) reg_MDL <= alu_output[7:0];
-                    if(reg_MDH_wr) reg_MDH <= alu_output[15:8];
+                    if(reg_MDL_wr_A) begin //save A to MDL(rpa2, stax)
+                        reg_MDL <= reg_A;
+                    end
+                    else if(reg_MD_wr_EA) begin //save EA to MD(rpa2, steax)
+                        reg_MDL <= reg_EAL;
+                        reg_MDH <= reg_EAH;
+                    end
+                    else begin
+                        if(reg_MDL_wr) reg_MDL <= alu_output[7:0];
+                        if(reg_MDH_wr) reg_MDH <= alu_output[15:8];
+                    end
                 end
             end
             else if(md_inlatch_tick) begin
@@ -1205,11 +1230,11 @@ always @(*) begin
         3'b000: reg_RPA2_OFFSET = 16'h0000;
         3'b001: reg_RPA2_OFFSET = 16'h0000;
         3'b010: reg_RPA2_OFFSET = 16'h0000;
-        3'b011: reg_RPA2_OFFSET = {8'h00, reg_MDL}; //use alu type 0 to select an addend automatically
+        3'b011: reg_RPA2_OFFSET = {8'h00, reg_MDH}; //use alu type 0 to select an addend automatically
         3'b100: reg_RPA2_OFFSET = {8'h00, reg_A}; 
         3'b101: reg_RPA2_OFFSET = {8'h00, reg_B};
         3'b110: reg_RPA2_OFFSET = {reg_EAH, reg_EAL};
-        3'b111: reg_RPA2_OFFSET = {8'h00, reg_MDL};
+        3'b111: reg_RPA2_OFFSET = {8'h00, reg_MDH};
     endcase
 end
 
@@ -1268,7 +1293,7 @@ always @(*) begin
             SB_MDI        : alu_pb = reg_MDI;
             SB_A          : alu_pb = {8'h00, reg_A};
             SB_EA         : alu_pb = {reg_EAH, reg_EAL};
-            SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MD_swap_input_order ? reg_MDI[15:8] : reg_MDI[7:0]};
+            SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MDI[7:0]};
             SB_ADDR_TA    : alu_pb = {8'h00, 2'b10, reg_OPCODE[4:0], 1'b0};
             SB_ADDR_FA    : alu_pb = {5'b00001, reg_OPCODE[2:0], reg_MDI[7:0]};
             SB_ADDR_REL_S : alu_pb = {{11{reg_OPCODE[5]}}, reg_OPCODE[4:0]}; //sign extension
@@ -1303,7 +1328,7 @@ always @(*) begin
             SD_A          : alu_pb = reg_A;
             SD_EA         : alu_pb = {reg_EAH, reg_EAL};
             SD_BC         : alu_pb = {reg_B, reg_C};
-            SD_DE         : alu_pb = {reg_D, reg_H};
+            SD_DE         : alu_pb = {reg_D, reg_E};
             SD_HL         : alu_pb = {reg_H, reg_L};
             SD_MDH        : alu_pb = {8'h00, reg_MDH};
             SD_MD         : alu_pb = {reg_MDH, reg_MDL};

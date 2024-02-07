@@ -89,9 +89,9 @@ localparam SD_RPA        = 4'b1111;
 
 //2-cycle opcode group
 localparam MVI_R_IM         = 8'd000;
-localparam STAX_RPA_A       = 8'd002;
-localparam LDAX_A_RPA       = 8'd004;
-localparam LXI              = 8'd006;
+localparam LXI_RP2_IM       = 8'd002;
+localparam STAX_RPA_A       = 8'd004;
+localparam LDAX_A_RPA       = 8'd006;
 localparam INX_RP2          = 8'd008; //RP2 actually
 localparam INX_EA           = 8'd010;
 localparam DCX_RP2          = 8'd012;
@@ -107,6 +107,11 @@ localparam SUSP             = 8'd030; //HLT or STOP
 
 //4-cycle opcode group
 localparam MOV_MEM_R        = 8'd032;
+localparam MVIW_WA_IM       = 8'd036;
+localparam STAX_RPA2_A      = 8'd040;
+localparam LDAX_A_RPA2      = 8'd044;
+localparam BLOCK            = 8'd048;
+localparam LD_RP_MEM        = 8'd052; //LBCD, LDED, LHLD, LSPD
 
 localparam NOP              = 8'd254;
 localparam IRD              = 8'd255;

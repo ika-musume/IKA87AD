@@ -84,6 +84,8 @@ always @(*) begin
     else if(opcode_page == 3'd1) begin
              if((op[7:4] == 4'h3  ||  op[7:4] == 4'hB) &&
                 (op[3:0] == 4'hB))                      mcrom_sa = SUSP;
+        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'h8 ) mcrom_sa = TABLE;
+        else if( op[7:4] == 4'h3  &&  op[3:1] == 3'h4 ) mcrom_sa = RLD_RRD;
     end
     else if(opcode_page == 3'd4) begin
              if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_A_RPA;
@@ -499,7 +501,7 @@ IKA87AD_microcode u_microcode (
     0100: (w) MD_word
     0101: (w) MA
     0110: (b) PSW
-    0111: 
+    0111: (w) BC
     1000: 
     1001: 
     1010: 
@@ -514,9 +516,9 @@ IKA87AD_microcode u_microcode (
     0001: NEGA(negate)
     0010: DAA(what the fuck is that)
     0011: RLD(rotate left digit)
-    0100: RRD(rotate right digit)
-    0101: MUL
-    0110: DIV
+    0100: MUL
+    0101: DIV
+    0110:
     0111: shift operation, OPCODE[7], OPCODE[2], OPCODE[5:4], 
     1000: (-A)push operation: alu out=A-1, ma out=A-1
     1001: (A+)pop operation: alu out=A+1, ma out=A
@@ -644,7 +646,8 @@ wire            reg_A_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_A) ||   
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd1) || //r2 byte(mc1)
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd0);   //rp1 word
 
-wire            reg_B_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd2) || //r byte
+wire            reg_B_wr   = (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC) ||                      //direct designation
+                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd2) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd2) || //r2 byte(mc0)
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd2) || //r2 byte(mc1)
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd2) || //r1 byte
@@ -652,7 +655,8 @@ wire            reg_B_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1) || //rp word
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1);   //rp1 word
 
-wire            reg_C_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_C) ||                       //direct designation
+wire            reg_C_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_C)  ||                      //direct designation
+                             (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC) ||                      //direct designation
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd3) || //r byte
                              (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd3) || //r2 byte(mc0)
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd3) || //r2 byte(mc1)
@@ -695,11 +699,12 @@ wire            reg_L_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r
 
 wire            reg_wr_word_nbyte = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || //direct designation
                                     (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA ) || //direct designation
+                                    (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC ) || //direct designation
                                     (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2) || 
                                     (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP ) || 
                                     (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1) || 
-                                    (mc_type == MCTYPE1 && mc_sd == SD_RPA)         ||
-                                    (mc_type == MCTYPE1 && mc_sd == SD_DE)          ||
+                                    (mc_type == MCTYPE1 && mc_sd == SD_RPA)         || //rpa auto inc/dec condition
+                                    (mc_type == MCTYPE1 && mc_sd == SD_DE)          || //BLOCK auto inc
                                     (mc_type == MCTYPE1 && mc_sd == SD_HL);
 
 //PC/SP
@@ -894,6 +899,7 @@ always @(posedge emuclk) begin
         reg_PC <= 16'hFFFF;
         reg_SP <= 16'h0000;
         reg_MA <= 16'h0000;
+        reg_TEMP <= 16'h0000;
     end
     else begin
         if(cycle_tick) begin
@@ -912,18 +918,20 @@ always @(posedge emuclk) begin
             //Memory Address load/auto inc conditions
             if(reg_MA_wr) reg_MA <= alu_ma_output;
             else begin
-                if(opcode_tick) reg_MA <= reg_PC;
-                else begin
-                    if(current_bus_acc == RD3 || current_bus_acc == WR3) begin //if there was a 3cyc read/write access,
-                        if(address_source_sel == MA) begin
-                            if(reg_MA_inc_ndec) reg_MA <= reg_MA == 16'hFFFF ? 16'h0000 : reg_MA + 16'h0001;
-                            else reg_MA <= reg_MA == 16'h0000 ? 16'hFFFF : reg_MA - 16'h0001;
-                        end
-                        else reg_MA <= reg_MA;
+                if(current_bus_acc == RD3 || current_bus_acc == WR3) begin //if there was a 3cyc read/write access,
+                    if(address_source_sel == MA) begin
+                        if(reg_MA_inc_ndec) reg_MA <= reg_MA == 16'hFFFF ? 16'h0000 : reg_MA + 16'h0001;
+                        else reg_MA <= reg_MA == 16'h0000 ? 16'hFFFF : reg_MA - 16'h0001;
                     end
                     else reg_MA <= reg_MA;
                 end
+                else reg_MA <= reg_MA;
             end
+
+            if(reg_TEMP_wr) reg_TEMP <= alu_temp_output;
+        end
+        else if(opcode_inlatch_tick) begin
+            reg_MA <= reg_PC;
         end
     end
 end
@@ -1320,7 +1328,7 @@ always @(*) begin
             SC_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
             SC_DST_MA     : alu_pa = reg_MA;
             SC_DST_PSW    : alu_pa = reg_PSW;
-            SC_DST_RPA    : alu_pa = reg_RPA;
+            SC_DST_BC     : alu_pa = {reg_B, reg_C};
             default       : alu_pa = 16'h0000;
         endcase
 
@@ -1531,7 +1539,10 @@ always @(*) begin
         end
     end
     else if(mc_type == MCTYPE1) begin
-             if(mc_t1_alusel == 4'h0) alu_output = alu_pb; //out<-pb bypass
+        if(mc_t1_alusel == 4'h0) begin 
+                alu_ma_output = alu_pb; //out<-pb bypass
+                alu_output = alu_pb;
+        end
         else if(mc_t1_alusel == 4'h1) begin //2's complement
             alu_output = alu_adder_out;
             alu_adder_op0 = 16'h0000; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1;
@@ -1554,22 +1565,16 @@ always @(*) begin
                 end
             end
         end
-        else if(mc_t1_alusel == 4'h3) begin //RLD PA=MDin, PB=reg_A
-            alu_output = {alu_pa[3:0], alu_pb[3:0]}; //to MD
-            alu_temp_output = {alu_pb[7:4], alu_pa[7:4]}; //to TEMP->A
+        else if(mc_t1_alusel == 4'h3) begin //RLD(even) RRD(odd) PA=MDin, PB=reg_A
+            alu_output = reg_OPCODE[0] ? {alu_pb[3:0], alu_pa[7:4]} : {alu_pa[3:0], alu_pb[3:0]}; //to MD
+            alu_temp_output = reg_OPCODE[0] ? {alu_pb[7:4], alu_pa[3:0]} : {alu_pb[7:4], alu_pa[7:4]}; //to TEMP->A
 
             alu_digrot_TEMP_wr = 1'b1;
         end
-        else if(mc_t1_alusel == 4'h4) begin //RRD PA=MDin, PB=reg_A
-            alu_output = {alu_pb[3:0], alu_pa[7:4]}; //to MD
-            alu_temp_output = {alu_pb[7:4], alu_pa[3:0]}; //to TEMP->A
-
-            alu_digrot_TEMP_wr = 1'b1;
-        end
-        else if(mc_t1_alusel == 4'h5) begin //MUL pa=EA, pb=r2
+        else if(mc_t1_alusel == 4'h4) begin //MUL pa=EA, pb=r2
             alu_output = 16'h0000; //reset EA
         end
-        else if(mc_t1_alusel == 4'h6) begin //DIV
+        else if(mc_t1_alusel == 4'h5) begin //DIV
             alu_output = {alu_pa[14:0], 1'b0};
             alu_temp_output = {15'd0, alu_pa[15]};
         end

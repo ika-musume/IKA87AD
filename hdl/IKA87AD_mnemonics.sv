@@ -70,7 +70,7 @@ localparam SC_DST_MDL    = 4'b0011;
 localparam SC_DST_MD     = 4'b0100;
 localparam SC_DST_MA     = 4'b0101;
 localparam SC_DST_PSW    = 4'b0110;
-localparam SC_DST_RPA    = 4'b1111;
+localparam SC_DST_BC     = 4'b0111;
 
 //source d types
 localparam SD_A          = 4'b0000;
@@ -110,8 +110,10 @@ localparam MOV_MEM_R        = 8'd032;
 localparam MVIW_WA_IM       = 8'd036;
 localparam STAX_RPA2_A      = 8'd040;
 localparam LDAX_A_RPA2      = 8'd044;
-localparam BLOCK            = 8'd048;
-localparam LD_RP_MEM        = 8'd052; //LBCD, LDED, LHLD, LSPD
+localparam LD_RP_MEM        = 8'd048; //LBCD, LDED, LHLD, LSPD
+localparam BLOCK            = 8'd052;
+localparam TABLE            = 8'd056;
+localparam RLD_RRD          = 8'd060;
 
 localparam NOP              = 8'd254;
 localparam IRD              = 8'd255;

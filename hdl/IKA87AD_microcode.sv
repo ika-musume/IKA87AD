@@ -115,6 +115,29 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         RLD_RRD+2       : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
         RLD_RRD+3       : mc <= {MCTYPE0, 1'b0, 1'b0, SB_TEMP, SA_DST_A, 2'b00, RD4};                   //A<-ALU temp, RD4
 
+        //PUSH
+        PUSH            : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1000, IDLE};                 //MA<--SP, IDLE
+        PUSH+1          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_RP1, SA_DST_MD, 2'b00, WR3};                   //MD<-rp1, WR3
+        PUSH+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
+        PUSH+3          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        //calls
+        CALB            : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1000, IDLE};                 //MA<--SP, IDLE
+        CALB+1          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, WR3};   //nop, WR3
+        CALB+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
+        CALB+3          : mc <= {MCTYPE1, 1'b0, 1'b0, SD_BC, SC_DST_PC, 4'b0000, RD4};                  //PC<-BC, RD4
+
+        CALF            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        CALF+1          : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1000, WR3};                  //MA<--SP, WR3
+        CALF+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
+        CALF+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADDR_FA, SA_DST_PC, 2'b00, RD4};               //PC<-fa, RD4
+
+        //return from interrupt
+        RETI            : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1001, RD3};                  //MA<-SP+, RD3
+        RETI+1          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD2, SA_DST_SP, 2'b01, RD3};                  //SP<-SP+2, RD3
+        RETI+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_PC, 2'b00, RD3};                    //PC<-MD, RD3
+        RETI+3          : mc <= {MCTYPE1, 1'b0, 1'b0, SD_MD, SC_DST_PSW, 4'b0000, RD4};                 //PSW<-MD, RD4
+
         NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
         IRD             : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //wait for decoding

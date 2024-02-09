@@ -71,6 +71,7 @@ localparam SC_DST_MD     = 4'b0100;
 localparam SC_DST_MA     = 4'b0101;
 localparam SC_DST_PSW    = 4'b0110;
 localparam SC_DST_BC     = 4'b0111;
+localparam SC_DST_PC     = 4'b1000;
 
 //source d types
 localparam SD_A          = 4'b0000;
@@ -114,6 +115,12 @@ localparam LD_RP_MEM        = 8'd048; //LBCD, LDED, LHLD, LSPD
 localparam BLOCK            = 8'd052;
 localparam TABLE            = 8'd056;
 localparam RLD_RRD          = 8'd060;
+localparam PUSH             = 8'd064;
+localparam CALB             = 8'd068;
+localparam CALF             = 8'd072;
+localparam RETI             = 8'd076;
+
+//5-cycle and 3-cycle opcode group
 
 localparam NOP              = 8'd254;
 localparam IRD              = 8'd255;

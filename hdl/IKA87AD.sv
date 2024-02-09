@@ -77,6 +77,9 @@ always @(*) begin
         else if( op[7:4] == 4'hB  &&  op[3:0] >  4'hA ) mcrom_sa = STAX_RPA2_A;
         else if( op[7:4] == 4'hA  &&  op[3:0] >  4'hA ) mcrom_sa = LDAX_A_RPA2;
         else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h1 ) mcrom_sa = BLOCK;
+        else if( op[7:4] == 4'hB  &&  op[3:0] <  4'h5 ) mcrom_sa = PUSH;
+        else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = CALF;
+        else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h2 ) mcrom_sa = RETI;
 
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
         else                                            mcrom_sa = NOP;
@@ -86,6 +89,7 @@ always @(*) begin
                 (op[3:0] == 4'hB))                      mcrom_sa = SUSP;
         else if( op[7:4] == 4'h4  &&  op[3:0] == 4'h8 ) mcrom_sa = TABLE;
         else if( op[7:4] == 4'h3  &&  op[3:1] == 3'h4 ) mcrom_sa = RLD_RRD;
+        else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h9 ) mcrom_sa = CALB;
     end
     else if(opcode_page == 3'd4) begin
              if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_A_RPA;
@@ -141,7 +145,7 @@ wire            mc_bk_cpu_susp   = mc_ctrl_output[6];
 wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
-wire    [4:0]   mc_s_nop         = mc_ctrl_output[13:9];
+wire    [4:0]   mc_s_nop         = mcrom_data[13:9];
 wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
 wire            mc_s_cond_read   = mc_ctrl_output[7];
 wire    [2:0]   mc_s_cond_branch = mc_ctrl_output[6:4];
@@ -366,7 +370,7 @@ always @(*) begin
     else mcrom_addr = mc_end_of_instruction ? IRD : {mcrom_sa[7:3], mc_cntr_next};
 end
 
-assign  mc_jump_to_next_inst = (mc_type == MCTYPE3 && mc_s_nop[4]) ? mcrom_data[14] & engine_suspension_cntr == mc_s_nop[3:0] :
+assign  mc_jump_to_next_inst = (mc_type == MCTYPE3 && mc_s_nop[4]) ? mcrom_data[14] & (engine_suspension_cntr == mc_s_nop[3:0]) :
                                                                      mcrom_data[14];
 
 
@@ -502,7 +506,7 @@ IKA87AD_microcode u_microcode (
     0101: (w) MA
     0110: (b) PSW
     0111: (w) BC
-    1000: 
+    1000:     PC
     1001: 
     1010: 
     1011: 
@@ -709,6 +713,7 @@ wire            reg_wr_word_nbyte = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_E
 
 //PC/SP
 wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
+                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_PC) ||
                             (mc_type == MCTYPE3 && mc_s_cond_pc_dec);
 wire            reg_SP_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP ) ||                      //direct designation
                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd0) ||  //rp2 word
@@ -717,15 +722,16 @@ wire            reg_SP_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP ) ||  
 
 //Memory IO related registers, MA=Memory Address, MD=Memory Data
 wire            reg_MA_dec_mode = mc_type == MCTYPE1 && mc_t1_alusel == 4'h8;
-wire            reg_MA_wr   = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MA) ||
-                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA);
+wire            reg_MA_wr     = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MA) ||
+                                (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA);
 
 wire            reg_MDL_wr_A  = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd0) ||
                                 (mc_type == MCTYPE1 && mc_sd == SD_RPA && mc_sc_dst == SC_DST_MA && opcode_page == 3'd0); //stax
-wire            reg_MD_wr_EA =  (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd1);
-wire            reg_MDL_wr  =   (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL || mc_sa_dst == SA_DST_MD)) || 
+wire            reg_MD_wr_EA  = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd1);
+wire            reg_MD_wr_PC  = (mc_type == MCTYPE1 && mc_sd == SD_SP && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000); 
+wire            reg_MDL_wr    = (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL || mc_sa_dst == SA_DST_MD)) || 
                                 (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDL || mc_sc_dst == SC_DST_MD));
-wire            reg_MDH_wr  =   (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
+wire            reg_MDH_wr    = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
                                 (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD);
 
 //swaps MD output order, push to stack or V_wa addressing
@@ -733,6 +739,8 @@ wire            reg_MD_swap_output_order = (mc_type == MCTYPE3 && mc_s_swap_md_o
                                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000); 
 wire            reg_MD_swap_input_order  = mc_type == MCTYPE3 && mc_s_cond_read;
 
+//status register(flag restoration)
+wire            reg_PSW_wr    = (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_PSW);
 
 //ALU control
 wire            alu_mul_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
@@ -848,8 +856,8 @@ assign int_mask = {reg_MKH, reg_MKL};
 //  Flags
 //
 
-reg             flag_Z, flag_SK, flag_CY, flag_HC, flag_L1, flag_L0;
-wire    [7:0]   reg_PSW = {1'b1, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b0, flag_CY};
+reg             flag_Z, flag_SK, flag_C, flag_HC, flag_L1, flag_L0;
+wire    [7:0]   reg_PSW = {1'b1, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b0, flag_C};
 
 
 //
@@ -857,6 +865,7 @@ wire    [7:0]   reg_PSW = {1'b1, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b
 //
 
 reg     [15:0]  reg_PC, reg_SP, reg_MA;
+reg     [15:0]  next_pc;
 
 //address source selector
 localparam PC = 2'b0;
@@ -883,8 +892,7 @@ always @(posedge emuclk) begin
                 reg_MA_inc_ndec <= 1'b1;
             end
             else begin
-                if(reg_PC_wr) address_source_sel <= PC; //select PC
-                else if(reg_MA_wr) begin
+                if(reg_MA_wr) begin
                     address_source_sel <= MA; //select MA
                     reg_PC_inc_stop <= 1'b1;
                 end
@@ -905,12 +913,7 @@ always @(posedge emuclk) begin
         if(cycle_tick) begin
             //Program Counter load/auto increment conditions
             if(reg_PC_wr) reg_PC <= alu_output;
-            else begin
-                if(reg_PC_inc_stop) reg_PC <= reg_PC;
-                else begin
-                    if(current_bus_acc == RD4 || current_bus_acc == RD3) reg_PC <= reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
-                end
-            end
+            else reg_PC <= next_pc;
 
             //Stack Pointer load condition
             if(reg_SP_wr) reg_SP <= alu_output;
@@ -937,6 +940,12 @@ always @(posedge emuclk) begin
 end
 
 always @(*) begin
+    if(reg_PC_inc_stop) next_pc = reg_PC;
+    else begin
+        if(current_bus_acc == RD4 || current_bus_acc == RD3) next_pc = reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
+        else next_pc = reg_PC;
+    end
+
     case(address_source_sel)
         PC: memory_access_address = reg_PC;
         MA: memory_access_address = reg_MA;
@@ -1028,12 +1037,16 @@ always @(posedge emuclk) begin
                         reg_MDL <= reg_A;
                     end
                     else if(reg_MD_wr_EA) begin //save EA to MD(rpa2, steax)
-                        reg_MDL <= reg_EAL;
                         reg_MDH <= reg_EAH;
+                        reg_MDL <= reg_EAL;
+                    end
+                    else if(reg_MD_wr_PC) begin
+                        reg_MDH <= next_pc[15:8];
+                        reg_MDL <= next_pc[7:0];
                     end
                     else begin
-                        if(reg_MDL_wr) reg_MDL <= alu_output[7:0];
                         if(reg_MDH_wr) reg_MDH <= alu_output[15:8];
+                        if(reg_MDL_wr) reg_MDL <= alu_output[7:0];
                     end
                 end
             end
@@ -1174,7 +1187,7 @@ always @(*) begin
         3'b001: reg_RP2 = {reg_B, reg_C};
         3'b010: reg_RP2 = {reg_D, reg_E};
         3'b011: reg_RP2 = {reg_H, reg_L};
-        3'b100: reg_RP2 = {reg_E, reg_A};
+        3'b100: reg_RP2 = {reg_EAH, reg_EAL};
         3'b101: reg_RP2 = 16'h0000; //not specified on the datasheet
         3'b110: reg_RP2 = 16'h0000;
         3'b111: reg_RP2 = 16'h0000;
@@ -1185,7 +1198,7 @@ always @(*) begin
         3'b001: reg_RP1 = {reg_B, reg_C};
         3'b010: reg_RP1 = {reg_D, reg_E};
         3'b011: reg_RP1 = {reg_H, reg_L};
-        3'b100: reg_RP1 = {reg_E, reg_A};
+        3'b100: reg_RP1 = {reg_EAH, reg_EAL};
         3'b101: reg_RP1 = 16'h0000;
         3'b110: reg_RP1 = 16'h0000;
         3'b111: reg_RP1 = 16'h0000;
@@ -1329,6 +1342,7 @@ always @(*) begin
             SC_DST_MA     : alu_pa = reg_MA;
             SC_DST_PSW    : alu_pa = reg_PSW;
             SC_DST_BC     : alu_pa = {reg_B, reg_C};
+            SC_DST_PC     : alu_pa = reg_PC;
             default       : alu_pa = 16'h0000;
         endcase
 
@@ -1409,7 +1423,7 @@ always @(*) begin
             4'b0010: begin alu_shifter[7] = 1'b0; 
                            alu_shifter[6:0] = alu_pb[7:1];
                            alu_shifter_co = alu_pb[0]; end //SLR
-            4'b0011: begin alu_shifter[7] = flag_CY;
+            4'b0011: begin alu_shifter[7] = flag_C;
                            alu_shifter[6:0] = alu_pb[7:1];
                            alu_shifter_co = alu_pb[0]; end //RLR
             4'b0100: begin alu_shifter[0] = 1'b0; 
@@ -1419,7 +1433,7 @@ always @(*) begin
             4'b0110: begin alu_shifter[0] = 1'b0; 
                            alu_shifter[7:1] = alu_pb[6:0];
                            alu_shifter_co = alu_pb[7]; end //SLL
-            4'b0111: begin alu_shifter[0] = flag_CY;
+            4'b0111: begin alu_shifter[0] = flag_C;
                            alu_shifter[7:1] = alu_pb[6:0];
                            alu_shifter_co = alu_pb[7]; end //RLL
 
@@ -1428,7 +1442,7 @@ always @(*) begin
             4'b1010: begin alu_shifter[15] = 1'b0;
                            alu_shifter[14:0] = alu_pb[15:1];
                            alu_shifter_co = alu_pb[0]; end //DSLR
-            4'b1011: begin alu_shifter[15] = flag_CY;
+            4'b1011: begin alu_shifter[15] = flag_C;
                            alu_shifter[14:0] = alu_pb[15:1];
                            alu_shifter_co = alu_pb[0]; end //DRLR
             4'b1100: ; //no instruction specified
@@ -1436,7 +1450,7 @@ always @(*) begin
             4'b1110: begin alu_shifter[0] = 1'b0;
                            alu_shifter[15:1] = alu_pb[14:0];
                            alu_shifter_co = alu_pb[15]; end //DSLL
-            4'b1111: begin alu_shifter[0] = flag_CY;
+            4'b1111: begin alu_shifter[0] = flag_C;
                            alu_shifter[15:1] = alu_pb[14:0];
                            alu_shifter_co = alu_pb[15]; end //DRLL
         endcase
@@ -1512,12 +1526,12 @@ always @(*) begin
                 4'h4: begin alu_output = alu_adder_out;           //ADD
                             alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
                 4'h5: begin alu_output = alu_adder_out;           //ADD with c_comb
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= flag_CY; end
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= flag_C; end
                 4'h6: begin alu_output = alu_adder_out;           //SUB
                             alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'h7: begin alu_output = alu_adder_out;           //SUB with borrow
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= ~flag_CY; 
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= ~flag_C; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'h8: alu_output = alu_pa & alu_pb;               //AND(bitwise AND)
                 4'h9: alu_output = alu_pa | alu_pb;               //OR(bitwise OR)
@@ -1551,16 +1565,16 @@ always @(*) begin
             alu_output = alu_adder_out;
             alu_adder_op0 = alu_pa; alu_adder_cin = 1'b0;
             if(flag_HC) begin
-                if(flag_CY == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                if(flag_C == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
                 else alu_adder_op1 = 16'h0066;
             end
             else begin
                 if(alu_pa[3:0] <= 4'h9) begin
-                    if(flag_CY == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0000;
+                    if(flag_C == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0000;
                     else alu_adder_op1 = 16'h0060;
                 end
                 else begin
-                    if(flag_CY == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                    if(flag_C == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
                     else alu_adder_op1 = 16'h0066;
                 end
             end
@@ -1685,14 +1699,28 @@ always @(posedge emuclk) begin
         flag_Z <= 1'b0; //reset
     end
     else begin
-        if(cycle_tick) if(mc_alter_flag) z_temp <= z_comb;
-        if(cycle_tick) if(mc_end_of_instruction) flag_Z <= z_temp;
+        if(cycle_tick) begin
+            if(reg_PSW_wr) begin
+                flag_Z <= reg_MDL[6]; z_temp <= reg_MDL[6];
+            end
+            else begin
+                if(mc_alter_flag) begin
+                    if(mc_end_of_instruction) begin 
+                        flag_Z <= z_comb; z_temp <= z_comb; 
+                    end
+                    else z_temp <= z_comb;
+                end
+                else begin
+                    if(mc_end_of_instruction) flag_Z <= z_temp;
+                end
+            end
+        end
     end
 end
 
 //c_comb flag
 always @(*) begin
-    c_comb = flag_CY;
+    c_comb = flag_C;
 
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
@@ -1707,7 +1735,7 @@ always @(*) begin
                 4'hB: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SLT
                 4'hE: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SNE
                 4'hF: c_comb = reg_wr_word_nbyte ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SEQ
-                default: c_comb = flag_CY;
+                default: c_comb = flag_C;
             endcase
         end
     end
@@ -1727,16 +1755,21 @@ end
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         c_temp <= 1'b0;
-        flag_CY <= 1'b0; //reset
+        flag_C <= 1'b0; //reset
     end
     else begin
         if(cycle_tick) begin
-            if(mc_alter_flag) begin
-                if(mc_end_of_instruction) begin flag_CY <= c_comb; c_temp <= c_comb; end
-                else c_temp <= c_comb;
+            if(reg_PSW_wr) begin
+                flag_C <= reg_MDL[0]; c_temp <= reg_MDL[0];
             end
             else begin
-                if(mc_end_of_instruction) flag_CY <= c_temp;
+                if(mc_alter_flag) begin
+                    if(mc_end_of_instruction) begin flag_C <= c_comb; c_temp <= c_comb; end
+                    else c_temp <= c_comb;
+                end
+                else begin
+                    if(mc_end_of_instruction) flag_C <= c_temp;
+                end
             end
         end
     end
@@ -1783,12 +1816,17 @@ always @(posedge emuclk) begin
     end
     else begin
         if(cycle_tick) begin
-            if(mc_alter_flag) begin
-                if(mc_end_of_instruction) begin flag_HC <= hc_comb; hc_temp <= hc_comb; end
-                else hc_temp <= hc_comb;
+            if(reg_PSW_wr) begin
+                flag_HC <= reg_MDL[4]; hc_temp <= reg_MDL[4];
             end
             else begin
-                if(mc_end_of_instruction) flag_HC <= hc_temp;
+                if(mc_alter_flag) begin
+                    if(mc_end_of_instruction) begin flag_HC <= hc_comb; hc_temp <= hc_comb; end
+                    else hc_temp <= hc_comb;
+                end
+                else begin
+                    if(mc_end_of_instruction) flag_HC <= hc_temp;
+                end
             end
         end
     end
@@ -1798,7 +1836,7 @@ end
 reg             skip_flag;
 always @(*) begin
     case(reg_OPCODE[2:0])
-        3'b010: skip_flag = flag_CY;
+        3'b010: skip_flag = flag_C;
         3'b011: skip_flag = flag_HC;
         3'b100: skip_flag = flag_Z;
         default: skip_flag = 1'b0;
@@ -1841,14 +1879,12 @@ always @(*) begin
         end
         else if(mc_type == MCTYPE2) begin
             case(mc_bk_skip_ctrl)
-                3'b000: ;
                 3'b001: sk_comb = skip_flag;  //SK
                 3'b010: sk_comb = ~skip_flag; //SKN
                 3'b011: sk_comb = reg_MDL[reg_OPCODE[2:0]]; //BIT
                 3'b100: sk_comb = iflag_muxed; //SKIT
                 3'b101: sk_comb = ~iflag_muxed; //SKNIT
-                3'b110: ;
-                3'b111: ;
+                default: sk_comb = 1'b0;
             endcase
         end
     end
@@ -1861,13 +1897,18 @@ always @(posedge emuclk) begin
     end
     else begin
         if(cycle_tick) begin
-            if(mc_alter_flag) begin
-                if(mc_end_of_instruction) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
-                else sk_temp <= sk_comb;
+            if(reg_PSW_wr) begin
+                flag_SK <= reg_MDL[5]; sk_temp <= reg_MDL[5];
             end
             else begin
-                if(mc_jump_to_next_inst) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
-                else begin if(mc_end_of_instruction) flag_SK <= sk_temp; end
+                if(mc_alter_flag) begin
+                    if(mc_end_of_instruction) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
+                    else sk_temp <= sk_comb;
+                end
+                else begin
+                    if(mc_jump_to_next_inst) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
+                    else begin if(mc_end_of_instruction) flag_SK <= sk_temp; end
+                end
             end
         end
     end
@@ -1886,12 +1927,26 @@ always @(posedge emuclk) begin
         flag_L0 <= 1'b0;
     end
     else begin
-        if(mcuclk_pcen) begin
-            if(cycle_tick) if(mc_alter_flag) flag_L1 <= 1'b1;
-            if(mcrom_read_tick) if(!flag_l1_set_cond) flag_L1 <= 1'b0;
+        if(mcrom_read_tick) begin
+            if(reg_PSW_wr) begin
+                flag_L1 <= reg_MDL[3];
+            end
+            else begin
+                if(!flag_l1_set_cond) flag_L1 <= 1'b0;
+                else begin
+                    if(mc_alter_flag) flag_L1 <= 1'b1;
+                end
+            end
 
-            if(cycle_tick) if(mc_alter_flag) flag_L0 <= 1'b1;
-            if(mcrom_read_tick) if(!flag_l0_set_cond) flag_L0 <= 1'b0;
+            if(reg_PSW_wr) begin
+                flag_L0 <= reg_MDL[2];
+            end
+            else begin
+                if(!flag_l0_set_cond) flag_L0 <= 1'b0;
+                else begin
+                    if(mc_alter_flag) flag_L0 <= 1'b1;
+                end
+            end
         end
     end
 end

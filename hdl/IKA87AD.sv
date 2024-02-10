@@ -80,6 +80,9 @@ always @(*) begin
         else if( op[7:4] == 4'hB  &&  op[3:0] <  4'h5 ) mcrom_sa = PUSH;
         else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = CALF;
         else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h2 ) mcrom_sa = RETI;
+        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hD ) mcrom_sa = MOV_SR_A;
+        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hC ) mcrom_sa = MOV_A_SR1;
+        else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h0 ) mcrom_sa = INRW;
 
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
         else                                            mcrom_sa = NOP;
@@ -96,7 +99,8 @@ always @(*) begin
         else if((op[7:4] == 4'h4  &&  op[3:0] <  4'h4) ||
                 (op[7:4] == 4'h6  &&  op[3:0] <  4'h4)) mcrom_sa = EALU_EA_R2;
         else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_MEM_R;
-        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'hF ) mcrom_sa = LD_RP_MEM;
+        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'hF ) mcrom_sa = LD_RP2_MEM;
+        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'hE ) mcrom_sa = ST_MEM_RP2;
     end
     else if(opcode_page == 3'd5) begin
              if( op[7:4] <  4'h8)                       mcrom_sa = ALUI_R_IM;
@@ -502,12 +506,12 @@ IKA87AD_microcode u_microcode (
     0001: (b) A
     0010: (w) EA
     0011: (b) MD_low_byte
-    0100: (w) MD_word
-    0101: (w) MA
-    0110: (b) PSW
-    0111: (w) BC
-    1000:     PC
-    1001: 
+    0100  (b) MD_high_byte
+    0101: (w) MD_word
+    0110: (w) MA
+    0111: (b) PSW
+    1000: (w) BC
+    1001:     PC
     1010: 
     1011: 
     1100: 
@@ -732,7 +736,7 @@ wire            reg_MD_wr_PC  = (mc_type == MCTYPE1 && mc_sd == SD_SP && mc_sc_d
 wire            reg_MDL_wr    = (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL || mc_sa_dst == SA_DST_MD)) || 
                                 (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDL || mc_sc_dst == SC_DST_MD));
 wire            reg_MDH_wr    = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
-                                (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD);
+                                (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDH || mc_sc_dst == SC_DST_MD));
 
 //swaps MD output order, push to stack or V_wa addressing
 wire            reg_MD_swap_output_order = (mc_type == MCTYPE3 && mc_s_swap_md_out) || 
@@ -1045,7 +1049,7 @@ always @(posedge emuclk) begin
                         reg_MDL <= next_pc[7:0];
                     end
                     else begin
-                        if(reg_MDH_wr) reg_MDH <= alu_output[15:8];
+                        if(reg_MDH_wr) reg_MDH <= reg_wr_word_nbyte ? alu_output[15:8] : alu_output[7:0];
                         if(reg_MDL_wr) reg_MDL <= alu_output[7:0];
                     end
                 end

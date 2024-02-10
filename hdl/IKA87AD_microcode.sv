@@ -92,10 +92,10 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         LDAX_A_RPA2+3   : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_A, 2'b00, RD4};                     //A<-MD
 
         //rp<-mem: LBCD, LDED, LHLD, LSPD
-        LD_RP_MEM       : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop*2, RD3
-        LD_RP_MEM+1     : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_MA, 2'b00, RD3};                    //MA<-MD, RD3
-        LD_RP_MEM+2     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
-        LD_RP_MEM+3     : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_RP, 2'b00, RD4};                    //rp<-MD, RD4
+        LD_RP2_MEM      : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop*2, RD3
+        LD_RP2_MEM+1    : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_MA, 2'b00, RD3};                    //MA<-MD, RD3
+        LD_RP2_MEM+2    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        LD_RP2_MEM+3    : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_RP2, 2'b00, RD4};                   //rp2<-MD, RD4
 
         //block transfer
         BLOCK           : mc <= {MCTYPE1, 1'b0, 1'b1, SD_HL, SC_DST_MA, 4'b1001, RD3};                  //MA<-HL+, RD3
@@ -137,6 +137,35 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         RETI+1          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD2, SA_DST_SP, 2'b01, RD3};                  //SP<-SP+2, RD3
         RETI+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_PC, 2'b00, RD3};                    //PC<-MD, RD3
         RETI+3          : mc <= {MCTYPE1, 1'b0, 1'b0, SD_MD, SC_DST_PSW, 4'b0000, RD4};                 //PSW<-MD, RD4
+
+        //
+        //  START ADDRESS 80: 3-CYCLE AND 5-CYCLE INSTRUCTION GROUP
+        //
+        //                       MCTYPE   FLAG  SKIP
+        MOV_SR_A        : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        MOV_SR_A+1      : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
+        MOV_SR_A+2      : mc <= {MCTYPE0, 1'b0, 1'b0, SB_A, SA_DST_SR_SR1, 2'b00, RD4};                 //sr<-A, RD4
+
+        ST_MEM_RP2      : mc <= {MCTYPE0, 1'b0, 1'b0, SB_RP2, SA_DST_MD, 2'b00, RD3};                   //MD<-RP2, RD3
+        ST_MEM_RP2+1    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        ST_MEM_RP2+2    : mc <= {MCTYPE0, 1'b0, 1'b1, SB_MDI, SA_DST_MA, 2'b00, WR3};                   //MA<-MDI, WR3
+        ST_MEM_RP2+3    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, WR3};   //nop, WR3
+        ST_MEM_RP2+4    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        MOV_A_SR1       : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        MOV_A_SR1+1     : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
+        MOV_A_SR1+2     : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SR_SR1, SA_DST_A, 2'b00, RD4};                 //sr<-A, RD4
+
+        INRW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
+        INRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, WR3};             //MA<-Vwa, RD3
+        INRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_MDH, SC_DST_MDH, 4'b1011, IDLE};               //MDH<-MDH+1, IDLE
+        INRW+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
+        INRW+4          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        MVIW_WA_IM      : 
+        MVIW_WA_IM+1    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        MVIW_WA_IM+2    : 
+        MVIW_WA_IM+3    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
         NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 

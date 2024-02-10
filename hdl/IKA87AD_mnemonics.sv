@@ -67,11 +67,12 @@ localparam SC_DST_R2     = 4'b0000;
 localparam SC_DST_A      = 4'b0001;
 localparam SC_DST_EA     = 4'b0010;
 localparam SC_DST_MDL    = 4'b0011;
-localparam SC_DST_MD     = 4'b0100;
-localparam SC_DST_MA     = 4'b0101;
-localparam SC_DST_PSW    = 4'b0110;
-localparam SC_DST_BC     = 4'b0111;
-localparam SC_DST_PC     = 4'b1000;
+localparam SC_DST_MDH    = 4'b0100;
+localparam SC_DST_MD     = 4'b0101;
+localparam SC_DST_MA     = 4'b0110;
+localparam SC_DST_PSW    = 4'b0111;
+localparam SC_DST_BC     = 4'b1000;
+localparam SC_DST_PC     = 4'b1001;
 
 //source d types
 localparam SD_A          = 4'b0000;
@@ -111,7 +112,7 @@ localparam MOV_MEM_R        = 8'd032;
 localparam MVIW_WA_IM       = 8'd036;
 localparam STAX_RPA2_A      = 8'd040;
 localparam LDAX_A_RPA2      = 8'd044;
-localparam LD_RP_MEM        = 8'd048; //LBCD, LDED, LHLD, LSPD
+localparam LD_RP2_MEM       = 8'd048; //LBCD, LDED, LHLD, LSPD
 localparam BLOCK            = 8'd052;
 localparam TABLE            = 8'd056;
 localparam RLD_RRD          = 8'd060;
@@ -120,7 +121,12 @@ localparam CALB             = 8'd068;
 localparam CALF             = 8'd072;
 localparam RETI             = 8'd076;
 
-//5-cycle and 3-cycle opcode group
+//3-cycle and 5-cycle opcode group
+localparam MOV_SR_A         = 8'd080;
+localparam ST_MEM_RP2       = 8'd083;
+localparam MOV_A_SR1        = 8'd088;
+localparam INRW             = 9'd091;
 
+//1-cycle opcode group
 localparam NOP              = 8'd254;
 localparam IRD              = 8'd255;

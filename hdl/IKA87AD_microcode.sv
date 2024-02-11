@@ -92,8 +92,8 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         LDAX_A_RPA2+3   : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_A, 2'b00, RD4};                     //A<-MD
 
         //rp<-mem: LBCD, LDED, LHLD, LSPD
-        LD_RP2_MEM      : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop*2, RD3
-        LD_RP2_MEM+1    : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_MA, 2'b00, RD3};                    //MA<-MD, RD3
+        LD_RP2_MEM      : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop*2, RD3
+        LD_RP2_MEM+1    : mc <= {MCTYPE0, 1'b0, 1'b1, SB_MD, SA_DST_MA, 2'b00, RD3};                    //MA<-MD, RD3
         LD_RP2_MEM+2    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
         LD_RP2_MEM+3    : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_RP2, 2'b00, RD4};                   //rp2<-MD, RD4
 
@@ -157,15 +157,41 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         MOV_A_SR1+2     : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SR_SR1, SA_DST_A, 2'b00, RD4};                 //sr<-A, RD4
 
         INRW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
-        INRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, WR3};             //MA<-Vwa, RD3
+        INRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
         INRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_MDH, SC_DST_MDH, 4'b1011, IDLE};               //MDH<-MDH+1, IDLE
         INRW+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
         INRW+4          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
-        MVIW_WA_IM      : 
-        MVIW_WA_IM+1    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
-        MVIW_WA_IM+2    : 
-        MVIW_WA_IM+3    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+        MOV_R_MEM       : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop*2, RD3
+        MOV_R_MEM+1     : mc <= {MCTYPE0, 1'b0, 1'b1, SB_MD, SA_DST_MA, 2'b00, RD3};                    //MA<-MD, RD3
+        MOV_R_MEM+2     : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_R, 2'b00, RD4};                     //r<-MD, RD4
+
+        DCRW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
+        DCRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
+        DCRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_MDH, SC_DST_MDH, 4'b1100, IDLE};               //MDH<-MDH-1, IDLE
+        DCRW+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
+        DCRW+4          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        //STEAX, LDEAX
+        STEAX_RPA_EA    : mc <= {MCTYPE1, 1'b0, 1'b1, SD_RPA, SC_DST_MA, 4'b1010, WR3};                 //MA<-RPA, WR3 :EA will be loaded into MD automatically
+        STEAX_RPA_EA+1  : mc <= {MCTYPE1, 1'b0, 1'b0, SD_RPA, SC_DST_NOWHERE, 4'b1010, WR3};            //NOWHERE<-RPA, WR3 :poke RPA once more(double increment)
+        STEAX_RPA_EA+2  : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        STEAX_RPA2_EA   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b1, 3'b000, 1'b0, 1'b0, IDLE};  //conditional read, IDLE
+        STEAX_RPA2_EA+1 : mc <= {MCTYPE0, 1'b0, 1'b1, SB_OFFSET, SA_DST_MA, 2'b00, IDLE};               //MA<-RPA_OFFSET, IDLE
+        STEAX_RPA2_EA+2 : mc <= {MCTYPE0, 1'b0, 1'b0, SB_RPA2, SA_DST_MA, 2'b01, WR3};                  //MA<-MA+RPA2, WR3
+        STEAX_RPA2_EA+3 : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, WR3};   //nop, WR3
+        STEAX_RPA2_EA+4 : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        LDEAX_EA_RPA    : mc <= {MCTYPE1, 1'b0, 1'b1, SD_RPA, SC_DST_MA, 4'b1010, RD3};                 //MA<-RPA, RD3 :EA will be loaded into MD automatically
+        LDEAX_EA_RPA+1  : mc <= {MCTYPE1, 1'b0, 1'b0, SD_RPA, SC_DST_NOWHERE, 4'b1010, RD3};            //NOWHERE<-RPA, RD3 :poke RPA once more(double increment)
+        LDEAX_EA_RPA+2  : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_EA, 2'b00, RD4};                    //EA<-MD, RD4
+
+        LDEAX_EA_RPA2   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b1, 3'b000, 1'b0, 1'b0, IDLE};  //conditional read, IDLE
+        LDEAX_EA_RPA2+1 : mc <= {MCTYPE0, 1'b0, 1'b1, SB_OFFSET, SA_DST_MA, 2'b00, IDLE};               //MA<-RPA_OFFSET, IDLE
+        LDEAX_EA_RPA2+2 : mc <= {MCTYPE0, 1'b0, 1'b0, SB_RPA2, SA_DST_MA, 2'b01, RD3};                  //MA<-MA+RPA2, RD3
+        LDEAX_EA_RPA2+3 : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        LDEAX_EA_RPA2+4 : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_EA, 2'b00, RD4};                    //EA<-MD, RD4
 
         NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 

@@ -78,12 +78,17 @@ always @(*) begin
         else if( op[7:4] == 4'hA  &&  op[3:0] >  4'hA ) mcrom_sa = LDAX_A_RPA2;
         else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h1 ) mcrom_sa = BLOCK;
         else if( op[7:4] == 4'hB  &&  op[3:0] <  4'h5 ) mcrom_sa = PUSH;
-        else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = CALF;
         else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h2 ) mcrom_sa = RETI;
         else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hD ) mcrom_sa = MOV_SR_A;
         else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hC ) mcrom_sa = MOV_A_SR1;
         else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h0 ) mcrom_sa = INRW;
         else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h0 ) mcrom_sa = DCRW;
+        else if( op[7:4] == 4'h4  &&
+                (op[3:0] >  4'h8  &&  op[3:0] <  4'hC)) mcrom_sa = MVIX_RPA_IM;
+                
+        else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = CALF;
+        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'h0 ) mcrom_sa = CALL;
+        else if( op[7:4] >  4'h7  &&  op[7:4] <  4'hA ) mcrom_sa = CALT;
         
 
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
@@ -133,7 +138,7 @@ reg     [17:0]  mc_ctrl_output; //combinational
 //fixed fields
 wire    [1:0]   mc_type = mc_ctrl_output[17:16];
 wire            mc_alter_flag = mcrom_data[15];
-wire            mc_jump_to_next_inst;
+wire            mc_jump_to_next_inst = mcrom_data[14];
 
 //bus control signals
 wire    [1:0]   mc_next_bus_acc = mc_ctrl_output[1:0];
@@ -345,8 +350,13 @@ always @(posedge emuclk) begin
                 if(mc_end_of_instruction) begin
                     engine_state <= WAIT_FOR_DECODING;
                     mc_cntr <= mc_cntr;
+
+                    engine_suspension_cntr <= 4'd0;
                 end
                 else begin
+                    engine_state <= engine_state;
+                    mc_cntr <= mc_cntr_next;
+
                     if(mc_type == MCTYPE3 && mc_s_nop[4]) begin
                         if(engine_suspension_cntr == mc_s_nop[3:0]) engine_suspension_cntr <= 4'd0;
                         else engine_suspension_cntr <= engine_suspension_cntr + 4'd1;
@@ -354,9 +364,6 @@ always @(posedge emuclk) begin
                     else begin
                         engine_suspension_cntr <= 4'd0;
                     end
-                    
-                    engine_state <= engine_state;
-                    mc_cntr <= mc_cntr_next;
                 end
             end
             else begin
@@ -386,9 +393,6 @@ always @(*) begin
     if(engine_state == WAIT_FOR_DECODING) mcrom_addr = mcrom_sa;
     else mcrom_addr = mc_end_of_instruction ? IRD : {mcrom_sa[7:3], mc_cntr_next};
 end
-
-assign  mc_jump_to_next_inst = (mc_type == MCTYPE3 && mc_s_nop[4]) ? mcrom_data[14] & (engine_suspension_cntr == mc_s_nop[3:0]) :
-                                                                     mcrom_data[14];
 
 
 
@@ -429,7 +433,7 @@ IKA87AD_microcode u_microcode (
         01101:
         01110: (b) A
         01111: (w) EA
-        10000:
+        10000: (w) ADDR_IM
         10001: (w) ADDR_V_WA 
         10010: (w) ADDR_TA
         10011: (w) ADDR_FA   
@@ -1233,13 +1237,6 @@ end
 //rpa addressing
 reg     [15:0]   reg_RPA1, reg_RPA, reg_RPA2, reg_RPA2_OFFSET;
 always @(*) begin
-    case(reg_OPCODE[1:0])
-        2'b00: reg_RPA1 = 16'h0000;
-        2'b01: reg_RPA1 = {reg_B, reg_C};
-        2'b10: reg_RPA1 = {reg_D, reg_E};
-        2'b11: reg_RPA1 = {reg_H, reg_L};
-    endcase
-
     //rpa, including auto inc/dec
     case(reg_OPCODE[2:0])
         3'b000: reg_RPA = 16'h0000;
@@ -1344,7 +1341,7 @@ always @(*) begin
             SB_ADD1       : alu_pb = 16'h0001;
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
-            SB_RPA1       : alu_pb = reg_RPA1;
+            SB_RPA1       : alu_pb = reg_RPA;
             SB_RPA2       : alu_pb = reg_RPA2;
             SB_OFFSET     : alu_pb = reg_RPA2_OFFSET;
             default       : alu_pb = 16'h0000;

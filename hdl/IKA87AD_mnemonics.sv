@@ -120,19 +120,23 @@ localparam RLD_RRD          = 8'd060;
 localparam PUSH             = 8'd064;
 localparam CALB             = 8'd068;
 localparam CALF             = 8'd072;
-localparam RETI             = 8'd076;
+localparam CALL             = 8'd076;
+localparam CALT             = 8'd080;
+localparam RETI             = 8'd084;
 
 //3-cycle and 5-cycle opcode group
-localparam MOV_SR_A         = 8'd080; //3
-localparam ST_MEM_RP2       = 8'd083; //5
-localparam MOV_A_SR1        = 8'd088;
-localparam INRW             = 8'd091;
-localparam MOV_R_MEM        = 8'd096;
-localparam DCRW             = 8'd099;
-localparam STEAX_RPA_EA     = 8'd104;
-localparam STEAX_RPA2_EA    = 8'd107;
-localparam LDEAX_EA_RPA     = 8'd112;
-localparam LDEAX_EA_RPA2    = 8'd115;
+localparam MOV_SR_A         = 8'd088; //3
+localparam ST_MEM_RP2       = 8'd091; //5
+localparam MOV_A_SR1        = 8'd096;
+localparam INRW             = 8'd099;
+localparam MOV_R_MEM        = 8'd104;
+localparam DCRW             = 8'd107;
+localparam STEAX_RPA_EA     = 8'd112;
+localparam STEAX_RPA2_EA    = 8'd115;
+localparam LDEAX_EA_RPA     = 8'd120;
+localparam LDEAX_EA_RPA2    = 8'd123;
+localparam MVIX_RPA_IM      = 8'd128;
+localparam SOFTI            = 8'd131;
 
 //1-cycle opcode group
 localparam NOP              = 8'd254;

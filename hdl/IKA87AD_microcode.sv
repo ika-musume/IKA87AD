@@ -132,6 +132,16 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         CALF+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
         CALF+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADDR_FA, SA_DST_PC, 2'b00, RD4};               //PC<-fa, RD4
 
+        CALL            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop*2, RD3
+        CALL+1          : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1000, WR3};                  //MA<--SP, WR3
+        CALL+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
+        CALL+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MDI, SA_DST_PC, 2'b00, RD4};                   //PC<-MDI(im), RD4
+
+        CALT            : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop*2, IDLE
+        CALT+1          : mc <= {MCTYPE1, 1'b0, 1'b0, SD_SP, SC_DST_MA, 4'b1000, WR3};                  //MA<--SP, WR3
+        CALT+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
+        CALT+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADDR_TA, SA_DST_PC, 2'b00, RD4};               //PC<-ta, RD4
+
         //return from interrupt
         RETI            : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1001, RD3};                  //MA<-SP+, RD3
         RETI+1          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD2, SA_DST_SP, 2'b01, RD3};                  //SP<-SP+2, RD3
@@ -192,6 +202,13 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         LDEAX_EA_RPA2+2 : mc <= {MCTYPE0, 1'b0, 1'b0, SB_RPA2, SA_DST_MA, 2'b01, RD3};                  //MA<-MA+RPA2, RD3
         LDEAX_EA_RPA2+3 : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
         LDEAX_EA_RPA2+4 : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_EA, 2'b00, RD4};                    //EA<-MD, RD4
+
+        MVIX_RPA_IM     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        MVIX_RPA_IM+1   : mc <= {MCTYPE0, 1'b0, 1'b1, SB_RPA1, SA_DST_MA, 2'b00, WR3};                  //MA<-RPA, WR3
+        MVIX_RPA_IM+2   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        
+        
 
         NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 

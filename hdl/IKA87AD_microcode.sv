@@ -71,7 +71,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         //  START ADDRESS 32: 4-CYCLE INSTRUCTION GROUP
         //
         //                       MCTYPE   FLAG  SKIP
-        MOV_MEM_R       : mc <= {MCTYPE0, 1'b0, 1'b0, SB_R, SA_DST_MD, 2'b00, RD3};                     //MD<-R
+        MOV_MEM_R       : mc <= {MCTYPE0, 1'b0, 1'b0, SB_R, SA_DST_MDL, 2'b00, RD3};                    //MD<-R
         MOV_MEM_R+1     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
         MOV_MEM_R+2     : mc <= {MCTYPE0, 1'b0, 1'b1, SB_MDI, SA_DST_MA, 2'b00, WR3};                   //MA<-MDI, WR3
         MOV_MEM_R+3     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
@@ -207,8 +207,21 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         MVIX_RPA_IM+1   : mc <= {MCTYPE0, 1'b0, 1'b1, SB_RPA1, SA_DST_MA, 2'b00, WR3};                  //MA<-RPA, WR3
         MVIX_RPA_IM+2   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
-        
-        
+        SOFTI           : mc <= {MCTYPE1, 1'b0, 1'b0, SD_SP, SC_DST_MA, 4'b1000, IDLE};                 //MA<--SP, IDLE
+        SOFTI+1         : mc <= {MCTYPE1, 1'b0, 1'b0, SD_PSW, SC_DST_MD, 4'b0000, WR3};                 //MD<-PSW, WR3
+        SOFTI+2         : mc <= {MCTYPE1, 1'b0, 1'b0, SD_PC, SC_DST_MD, 4'b0000, WR3};                  //MD<-PC, WR3
+        SOFTI+3         : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB2, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-2, WR3
+        SOFTI+4         : mc <= {MCTYPE0, 1'b1, 1'b0, SB_ADDR_INT, SA_DST_PC, 2'b00, RD4};              //PC<-0060, RD4
+
+        POP             : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1001, RD3};                  //MA<-SP+, RD3
+        POP+1           : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        POP+2           : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_RP1, 2'b00, RD4};                   //MD<-rp1, WR3
+
+        HARDI           : mc <= {MCTYPE1, 1'b0, 1'b0, SD_SP, SC_DST_MA, 4'b1000, IDLE};                 //MA<--SP, IDLE
+        HARDI+1         : mc <= {MCTYPE1, 1'b0, 1'b0, SD_PSW, SC_DST_MD, 4'b0000, WR3};                 //MD<-PSW, WR3
+        HARDI+2         : mc <= {MCTYPE1, 1'b0, 1'b0, SD_PC, SC_DST_MD, 4'b0000, WR3};                  //MD<-PC, WR3
+        HARDI+3         : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB2, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-2, WR3
+        HARDI+4         : mc <= {MCTYPE0, 1'b1, 1'b0, SB_ADDR_INT, SA_DST_PC, 2'b00, RD4};              //PC<-int addr, RD4
 
         NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 

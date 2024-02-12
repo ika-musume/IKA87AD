@@ -78,6 +78,7 @@ always @(*) begin
         else if( op[7:4] == 4'hA  &&  op[3:0] >  4'hA ) mcrom_sa = LDAX_A_RPA2;
         else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h1 ) mcrom_sa = BLOCK;
         else if( op[7:4] == 4'hB  &&  op[3:0] <  4'h5 ) mcrom_sa = PUSH;
+        else if( op[7:4] == 4'hA  &&  op[3:0] <  4'h5 ) mcrom_sa = POP;
         else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h2 ) mcrom_sa = RETI;
         else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hD ) mcrom_sa = MOV_SR_A;
         else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hC ) mcrom_sa = MOV_A_SR1;
@@ -85,10 +86,11 @@ always @(*) begin
         else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h0 ) mcrom_sa = DCRW;
         else if( op[7:4] == 4'h4  &&
                 (op[3:0] >  4'h8  &&  op[3:0] <  4'hC)) mcrom_sa = MVIX_RPA_IM;
-                
         else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = CALF;
         else if( op[7:4] == 4'h4  &&  op[3:0] == 4'h0 ) mcrom_sa = CALL;
         else if( op[7:4] >  4'h7  &&  op[7:4] <  4'hA ) mcrom_sa = CALT;
+        else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h2 ) mcrom_sa = SOFTI;
+        else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h3 ) mcrom_sa = HARDI;
         
 
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
@@ -238,7 +240,6 @@ end
 //interrupt related registers
 wire    [9:0]   int_mask; //interrupt mask register: (MSB)empty, full, adc, ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0(LSB)
 reg             int_enabled;
-wire    [2:0]   int_lv;
 
 //interrupt flags
 reg             iflag_NMI; //nNMI physical pin input, takes maximum 10us to suppress glitch
@@ -251,6 +252,42 @@ reg             iflag_BUFFULL, iflag_BUFEMPTY; //UART buffer full/empty
 
 //interrupt sources(wire)
 wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
+
+//interrupt priority
+reg     [2:0]   int_lv;
+always @(*) begin
+    if(reg_OPCODE == 8'h72) begin
+        int_lv = 3'd0; //SOFTI
+    end
+    else begin
+        casez({is_NMI, (is_TIMER0 | is_TIMER1), (is_pINT1 | is_nINT2), (is_CNTR0 | is_CNTR1), (is_nCNTRCIN | is_ADC), (is_BUFFULL | is_BUFEMPTY)})
+            6'b1?????: int_lv = 3'd1;
+            6'b01????: int_lv = 3'd2;
+            6'b001???: int_lv = 3'd3;
+            6'b0001??: int_lv = 3'd4;
+            6'b00001?: int_lv = 3'd5;
+            6'b000001: int_lv = 3'd6;
+            6'b000000: int_lv = 3'd7; //spurious interrupt
+            default: int_lv = 3'd7;
+        endcase
+    end
+end
+
+//interrupt routine address
+reg     [15:0]  int_addr;
+wire    [15:0]  spurious_int_addr;
+always @(*) begin
+    case(int_lv)
+        3'b000: int_addr = 16'h0060; //SOFTI
+        3'b001: int_addr = 16'h0004; //NMI
+        3'b010: int_addr = 16'h0018; //TIMER
+        3'b011: int_addr = 16'h0010; //INT PIN
+        3'b100: int_addr = 16'h0018; //COUNTER RELATED
+        3'b101: int_addr = 16'h0020; //ADC
+        3'b110: int_addr = 16'h0028; //SERIAL INTERFACE
+        3'b111: int_addr = spurious_int_addr; //not specified
+    endcase
+end
 
 //interrupt enable(1), disable(0)
 always @(posedge emuclk) begin
@@ -282,17 +319,26 @@ always @(posedge emuclk) begin
         if(cycle_tick) begin
             //NMI interrupt flag set/reset
             if(is_NMI) iflag_NMI <= 1'b1;
-            else begin if(mc_bk_iack) iflag_NMI <= 1'b0; end
+            else begin if(reg_OPCODE == 8'h73) iflag_NMI <= 1'b0; end
 
-            if(is_TIMER0) iflag_TIMER0 <= 1'b1;
+            if(is_TIMER0 & ~int_mask[0]) iflag_TIMER0 <= 1'b1; //masked interrupt
             else begin
-                if(~|(int_mask[1:0])) if(mc_type == MCTYPE2 && mc_bk_skip_ctrl[2] == 1'b1 && reg_OPCODE[4:0] == 5'd1) iflag_TIMER0 <= 1'b0; 
-                else begin if(mc_bk_iack) iflag_TIMER0 <= 1'b0; end
+                if(~|(int_mask[1:0])) begin
+                    if(mc_type == MCTYPE2 && mc_bk_skip_ctrl[2] == 1'b1 && reg_OPCODE[4:0] == 5'd1) iflag_TIMER0 <= 1'b0; //manual ack
+                end
+                else begin 
+                    if(reg_OPCODE == 8'h73) iflag_TIMER0 <= 1'b0; 
+                end
             end
-            if(is_TIMER1) iflag_TIMER1 <= 1'b1;
+
+            if(is_TIMER1 & ~int_mask[1]) iflag_TIMER1 <= 1'b1; //masked interrupt
             else begin
-                if(~|(int_mask[1:0])) if(mc_type == MCTYPE2 && mc_bk_skip_ctrl[2] == 1'b1 && reg_OPCODE[4:0] == 5'd2) iflag_TIMER1 <= 1'b0; 
-                else begin if(mc_bk_iack) iflag_TIMER1 <= 1'b0; end
+                if(~|(int_mask[1:0])) begin
+                    if(mc_type == MCTYPE2 && mc_bk_skip_ctrl[2] == 1'b1 && reg_OPCODE[4:0] == 5'd2) iflag_TIMER1 <= 1'b0; //manual ack
+                end
+                else begin 
+                    if(reg_OPCODE == 8'h73) iflag_TIMER1 <= 1'b0; 
+                end
             end
         end
     end
@@ -723,14 +769,15 @@ wire            reg_L_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_
                             (mc_type == MCTYPE1 && mc_sd == SD_HL  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
 
 wire            data_w_nb = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || //direct designation
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA ) || //direct designation
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC ) || //direct designation
                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2) || 
                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP ) || 
                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1) || 
-                            (mc_type == MCTYPE1 && mc_sd == SD_RPA)         || //rpa auto inc/dec condition
-                            (mc_type == MCTYPE1 && mc_sd == SD_DE)          || //BLOCK auto inc
-                            (mc_type == MCTYPE1 && mc_sd == SD_HL);
+                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD ) || //direct designation
+                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA ) || //direct designation
+                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC ) || //direct designation
+                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1000) || //addr dec
+                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1001) || //addr inc(BLOCK)
+                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1010);   //rpa auto inc/dec
 
 //PC/SP
 wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
@@ -757,9 +804,10 @@ wire            reg_MDH_wr    = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) |
                                 (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDH || mc_sc_dst == SC_DST_MD));
 
 //swaps MD output order, push to stack or V_wa addressing
-wire            reg_MD_swap_output_order = (mc_type == MCTYPE3 && mc_s_swap_md_out) || 
-                                           (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000); 
-wire            reg_MD_swap_input_order  = mc_type == MCTYPE3 && mc_s_cond_read && mc_next_bus_acc == RD3;
+wire            reg_MD_output_h2l = (mc_type == MCTYPE3 && mc_s_swap_md_out) || 
+                                    (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000); 
+wire            reg_MD_output_l2h = (mc_type == MCTYPE1 && mc_sd == SD_PSW);
+wire            reg_MD_input_h2l  = mc_type == MCTYPE3 && mc_s_cond_read && mc_next_bus_acc == RD3;
 
 //status register(flag restoration)
 wire            reg_PSW_wr    = (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_PSW);
@@ -879,7 +927,7 @@ assign int_mask = {reg_MKH, reg_MKL};
 //
 
 reg             flag_Z, flag_SK, flag_C, flag_HC, flag_L1, flag_L0;
-wire    [7:0]   reg_PSW = {1'b1, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b0, flag_C};
+wire    [7:0]   reg_PSW = {1'b0, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b0, flag_C};
 
 
 //
@@ -888,6 +936,7 @@ wire    [7:0]   reg_PSW = {1'b1, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b
 
 reg     [15:0]  reg_PC, reg_SP, reg_MA;
 reg     [15:0]  next_pc;
+assign  spurious_int_addr = reg_PC;
 
 //address source selector
 localparam PC = 2'b0;
@@ -1010,12 +1059,13 @@ always @(posedge emuclk) begin
             end
             else begin
                 //swap output data order(to HI->LO) when the current microcode operation is MD<-PC
-                if(reg_MD_swap_output_order) md_out_byte_sel <= 1'b1;
+                if(reg_MD_output_h2l) md_out_byte_sel <= 1'b1;
+                else if(reg_MD_output_l2h) md_out_byte_sel <= 1'b0;
                 else begin
                     if(current_bus_acc == WR3) md_out_byte_sel <= ~md_out_byte_sel;
                 end
 
-                if(reg_MD_swap_input_order) md_in_byte_sel <= 1'b1; //for rpa2 DE/HL+byte addressing mode
+                if(reg_MD_input_h2l) md_in_byte_sel <= 1'b1; //for rpa2 DE/HL+byte addressing mode
                 else begin
                     if(current_bus_acc == RD3) md_in_byte_sel <= ~md_in_byte_sel;
                 end
@@ -1271,21 +1321,6 @@ always @(*) begin
         3'b101: reg_RPA2_OFFSET = {8'h00, reg_B};
         3'b110: reg_RPA2_OFFSET = {reg_EAH, reg_EAL};
         3'b111: reg_RPA2_OFFSET = {8'h00, reg_MDH};
-    endcase
-end
-
-//interrupt routine address
-reg     [15:0]  int_addr;
-always @(*) begin
-    case(int_lv)
-        3'b000: int_addr = 16'h0060; //SOFTI
-        3'b001: int_addr = 16'h0004; //NMI
-        3'b010: int_addr = 16'h0018; //TIMER
-        3'b011: int_addr = 16'h0010; //INT PIN
-        3'b100: int_addr = 16'h0018; //COUNTER RELATED
-        3'b101: int_addr = 16'h0020; //ADC
-        3'b110: int_addr = 16'h0028; //SERIAL INTERFACE
-        3'b111: int_addr = 16'h0000; //not specified
     endcase
 end
 
@@ -1983,7 +2018,7 @@ end
 //At the end of the opcode/data fetch cycle, read the successive instruction 
 //by forcing the next_bus_acc as "RD4"
 always @(*) begin
-    if(|{flag_SK, flag_L1, flag_L0}) begin
+    if(|{flag_SK, flag_L1, flag_L0} && !(reg_OPCODE == 8'h72 || reg_OPCODE == 8'h73)) begin
         if(mc_jump_to_next_inst) mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
         else mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, mcrom_data[1:0]};
     end

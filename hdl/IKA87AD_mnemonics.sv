@@ -137,6 +137,8 @@ localparam LDEAX_EA_RPA     = 8'd120;
 localparam LDEAX_EA_RPA2    = 8'd123;
 localparam MVIX_RPA_IM      = 8'd128;
 localparam SOFTI            = 8'd131;
+localparam POP              = 8'd136;
+localparam HARDI            = 8'd139;
 
 //1-cycle opcode group
 localparam NOP              = 8'd254;

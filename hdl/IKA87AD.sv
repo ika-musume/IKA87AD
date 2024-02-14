@@ -91,6 +91,12 @@ always @(*) begin
         else if( op[7:4] >  4'h7  &&  op[7:4] <  4'hA ) mcrom_sa = CALT;
         else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h2 ) mcrom_sa = SOFTI;
         else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h3 ) mcrom_sa = HARDI;
+        else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h3 ) mcrom_sa = STAW;
+        else if( op[7:4] == 4'h1  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_R1_A;
+        else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h1 ) mcrom_sa = LDAW;
+        else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_A_R1;
+        else if( op[7:4] == 4'hB  &&
+                (op[3:0] >  4'h4  &&  op[3:0] <  4'h8)) mcrom_sa = DMOV_RP_EA;
         
 
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
@@ -108,6 +114,8 @@ always @(*) begin
         else if( op[7:4] == 4'h8  &&
                 (op[3:0] >  4'h1  &&  op[3:0] <  4'h6)) mcrom_sa = LDEAX_EA_RPA;
         else if( op[7:4] == 4'h8  &&  op[3:0] >  4'hA ) mcrom_sa = LDEAX_EA_RPA2;
+        else if( op[7:4] == 4'h2  &&  op[3:0] >  4'hB ) mcrom_sa = MUL;
+        else if( op[7:4] == 4'h3  &&  op[3:0] >  4'hB ) mcrom_sa = DIV;
     end
     else if(opcode_page == 3'd4) begin
              if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_A_RPA;
@@ -777,7 +785,8 @@ wire            data_w_nb = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || /
                             (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC ) || //direct designation
                             (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1000) || //addr dec
                             (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1001) || //addr inc(BLOCK)
-                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1010);   //rpa auto inc/dec
+                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1010) || //rpa auto inc/dec
+                            alu_muldiv_reg_EA_wr;
 
 //PC/SP
 wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
@@ -813,8 +822,8 @@ wire            reg_MD_input_h2l  = mc_type == MCTYPE3 && mc_s_cond_read && mc_n
 wire            reg_PSW_wr    = (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_PSW);
 
 //ALU control
-wire            alu_mul_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
-wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0110;
+wire            alu_mul_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0100;
+wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
 
 
 
@@ -877,7 +886,7 @@ always @(posedge emuclk) begin
     end
     else begin
         if(cycle_tick) begin
-            if(reg_EAH_wr) regpair_EAH[sel_VAEA] <= alu_output[15:8];
+            if(reg_EAH_wr) regpair_EAH[sel_VAEA] <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
             if(reg_EAL_wr) regpair_EAL[sel_VAEA] <= alu_output[7:0];
             if(reg_V_wr)   regpair_V[sel_VAEA]   <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
             if(reg_A_wr)   regpair_A[sel_VAEA]   <= alu_output[7:0];
@@ -1520,18 +1529,25 @@ always @(posedge emuclk) begin
     end
     else begin
         if(cycle_tick) begin
-            if(alu_mul_start) if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd16;
-            else if(alu_div_start) if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd0;
+            if(alu_mul_start) begin
+                if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd16;
+            end
+            else if(alu_div_start) begin
+                if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd0;
+            end
             else begin
-                if(alu_muldiv_cntr != 5'd31) alu_muldiv_cntr <= alu_muldiv_cntr == 5'd23 || alu_muldiv_cntr == 5'd15 ? 5'd31 : alu_muldiv_cntr + 5'd1;
+                if(alu_muldiv_cntr != 5'd31) alu_muldiv_cntr <= (alu_muldiv_cntr == 5'd23 || alu_muldiv_cntr == 5'd15) ? 5'd31 : alu_muldiv_cntr + 5'd1;
                 else alu_muldiv_cntr <= 5'd31;
             end
         end
     end
 end
 
-wire    [15:0]  alu_mul_pb = alu_pb[alu_muldiv_cntr] ? {8'h00, reg_A} << alu_muldiv_cntr : 16'h0000;
+wire    [15:0]  alu_mul_pa = {reg_EAH, reg_EAL};
+wire    [15:0]  alu_mul_pb = reg_R2[alu_muldiv_cntr[2:0]] ? ({8'h00, reg_A} << alu_muldiv_cntr[2:0]) : 16'h0000;
+
 wire    [15:0]  alu_div_pa = reg_TEMP;
+wire    [15:0]  alu_div_pb = ~{8'h00, reg_R2};
 wire    [31:0]  alu_div_out = alu_adder_out[15] ? {{reg_TEMP, {reg_EAH, reg_EAL}}[30:0], 1'b0} :
                                                   {{alu_adder_out, {reg_EAH, reg_EAL}}[30:0], 1'b1};
 
@@ -1542,7 +1558,7 @@ wire    [31:0]  alu_div_out = alu_adder_out[15] ? {{reg_TEMP, {reg_EAH, reg_EAL}
 
 always @(*) begin
     //maintain current destination register's data, if the port is not altered
-    alu_adder_op0 = 16'h0000; alu_adder_op1 = 16'h0000; alu_adder_cin <= 1'b0; //FA inputs
+    alu_adder_op0 = 16'h0000; alu_adder_op1 = 16'h0000; alu_adder_cin = 1'b0; //FA inputs
     alu_adder_borrow_mode = 1'b0;
 
     alu_output = alu_pa; //result output
@@ -1563,42 +1579,42 @@ always @(*) begin
         else if(mc_t0_alusel == 2'd1) begin
             alu_ma_output = alu_adder_out;
             alu_output = alu_adder_out;
-            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
+            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0;
         end
         else begin
             case(arith_code)
                 4'h0: alu_output = alu_pb;                        //MVI(move)
                 4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
                 4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0; end
                 4'h3: begin alu_output = alu_adder_out;           //SUBNB(check skip condition: NO BORROW; 2's complement)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'h4: begin alu_output = alu_adder_out;           //ADD
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0; end
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0; end
                 4'h5: begin alu_output = alu_adder_out;           //ADD with c_comb
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin <= flag_C; end
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = flag_C; end
                 4'h6: begin alu_output = alu_adder_out;           //SUB
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'h7: begin alu_output = alu_adder_out;           //SUB with borrow
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= ~flag_C; 
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = ~flag_C; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'h8: alu_output = alu_pa & alu_pb;               //AND(bitwise AND)
                 4'h9: alu_output = alu_pa | alu_pb;               //OR(bitwise OR)
                 4'hA: begin alu_temp_output = alu_adder_out;      //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b0; 
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b0; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'hB: begin alu_temp_output = alu_adder_out;      //SLT(skip if less than; check skip condition: BORROW; 2's complement)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1;
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1;
                             alu_adder_borrow_mode = 1'b1; end
                 4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO ZERO)
                 4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: ZERO)
                 4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO ZERO)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
                 4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: ZERO)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1; 
+                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
             endcase
         end
@@ -1610,7 +1626,7 @@ always @(*) begin
         end
         else if(mc_t1_alusel == 4'h1) begin //2's complement
             alu_output = alu_adder_out;
-            alu_adder_op0 = 16'h0000; alu_adder_op1 = ~alu_pb; alu_adder_cin <= 1'b1;
+            alu_adder_op0 = 16'h0000; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1;
         end
         else if(mc_t1_alusel == 4'h2) begin //DAA, kinda shit
             alu_output = alu_adder_out;
@@ -1687,28 +1703,29 @@ always @(*) begin
 
             alu_output = alu_adder_out;
         end
-    end
-
-    if(alu_muldiv_cntr != 5'd31) begin
-        if(alu_muldiv_cntr[4]) begin //multiply
-            alu_muldiv_reg_EA_wr = 1'b1;
-
-            alu_adder_op0 = alu_pa; //reg EA
-            alu_adder_op1 = alu_mul_pb; //A * r2, shifted and masked
-            alu_adder_cin = 1'b0;
-
-            alu_output = alu_adder_out;
-        end
         else begin
-            alu_muldiv_reg_TEMP_wr = 1'b1;
-            alu_muldiv_reg_EA_wr = 1'b1;
+            if(alu_muldiv_cntr != 5'd31) begin
+                if(alu_muldiv_cntr[4]) begin //multiply
+                    alu_muldiv_reg_EA_wr = 1'b1;
 
-            alu_adder_op0 = alu_div_pa;  //reg EA
-            alu_adder_op1 = ~alu_pb; //-r2
-            alu_adder_cin = 1'b1;
+                    alu_adder_op0 = alu_mul_pa; //reg EA
+                    alu_adder_op1 = alu_mul_pb; //A * r2, shifted and masked
+                    alu_adder_cin = 1'b0;
 
-            alu_output = alu_div_out[15:0];
-            alu_temp_output = alu_div_out[31:16];
+                    alu_output = alu_adder_out;
+                end
+                else begin
+                    alu_muldiv_reg_TEMP_wr = alu_muldiv_cntr[3:0] == 4'd15 ? 1'b0 : 1'b1;
+                    alu_muldiv_reg_EA_wr = 1'b1;
+                    
+                    alu_adder_op0 = alu_div_pa;  //reg EA
+                    alu_adder_op1 = alu_div_pb; //-r2
+                    alu_adder_cin = 1'b1;
+                    
+                    alu_output = alu_div_out[15:0];
+                    alu_temp_output = alu_div_out[31:16];
+                end
+            end
         end
     end
 end

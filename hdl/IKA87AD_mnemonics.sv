@@ -140,6 +140,16 @@ localparam SOFTI            = 8'd131;
 localparam POP              = 8'd136;
 localparam HARDI            = 8'd139;
 
+//3-cycle and 1-cycle opcode group
+localparam STAW             = 8'd144;
+localparam MOV_R1_A         = 8'd147;
+localparam LDAW             = 8'd148;
+localparam MOV_A_R1         = 8'd151;
+localparam MUL              = 8'd152;
+localparam DMOV_RP_EA       = 8'd155;
+localparam DIV              = 8'd156;
+localparam DMOV_EA_RP       = 8'd159;
+
 //1-cycle opcode group
 localparam NOP              = 8'd254;
 localparam IRD              = 8'd255;

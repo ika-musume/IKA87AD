@@ -45,6 +45,16 @@ add wave -noupdate -expand -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/
 add wave -noupdate -expand -group {MC ENGINE} /IKA87AD_tb/u_dut/mcrom_read_tick
 add wave -noupdate -expand -group {MC ENGINE} -radix unsigned /IKA87AD_tb/u_dut/mcrom_addr
 add wave -noupdate -expand -group {MC ENGINE} /IKA87AD_tb/u_dut/mcrom_data
+add wave -noupdate -expand -group {ALU MULDIV} /IKA87AD_tb/u_dut/alu_mul_start
+add wave -noupdate -expand -group {ALU MULDIV} /IKA87AD_tb/u_dut/alu_div_start
+add wave -noupdate -expand -group {ALU MULDIV} -radix unsigned /IKA87AD_tb/u_dut/alu_muldiv_cntr
+add wave -noupdate -expand -group {ALU MULDIV} -radix hexadecimal /IKA87AD_tb/u_dut/alu_mul_pa
+add wave -noupdate -expand -group {ALU MULDIV} -radix hexadecimal /IKA87AD_tb/u_dut/alu_mul_pb
+add wave -noupdate -expand -group {ALU MULDIV} -radix hexadecimal /IKA87AD_tb/u_dut/alu_div_pa
+add wave -noupdate -expand -group {ALU MULDIV} -radix hexadecimal /IKA87AD_tb/u_dut/alu_div_pb
+add wave -noupdate -expand -group {ALU MULDIV} -radix hexadecimal /IKA87AD_tb/u_dut/alu_div_out
+add wave -noupdate -expand -group {ALU MULDIV} /IKA87AD_tb/u_dut/alu_muldiv_reg_TEMP_wr
+add wave -noupdate -expand -group {ALU MULDIV} /IKA87AD_tb/u_dut/alu_muldiv_reg_EA_wr
 add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_op0
 add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_op1
 add wave -noupdate -group ALU -radix hexadecimal /IKA87AD_tb/u_dut/alu_adder_out

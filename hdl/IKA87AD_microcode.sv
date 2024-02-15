@@ -35,7 +35,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         INX_EA+1        : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD1, SA_DST_EA, 2'b01, RD4};                  //EA<-EA+1
         DCX_RP2         : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADD1, SA_DST_MA, 2'b01, IDLE};                 //MA<-MA+1, IDLE(stop PC increment)
         DCX_RP2+1       : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_RP2, 2'b01, RD4};                 //RP2<-RP2-1
-        DCX_EA          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADD1, SA_DST_MA, 2'b01, IDLE};                 //MA<-MA+1, b0IDLE(stop PC increment)
+        DCX_EA          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADD1, SA_DST_MA, 2'b01, IDLE};                 //MA<-MA+1, IDLE(stop PC increment)
         DCX_EA+1        : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_EA, 2'b01, RD4};                  //EA<-EA-1
 
         JMP             : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop*2, RD3
@@ -168,7 +168,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         INRW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
         INRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
-        INRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_MDH, SC_DST_MDH, 4'b1011, IDLE};               //MDH<-MDH+1, IDLE
+        INRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_NOSOURCE, SC_DST_MDH, 4'b1011, IDLE};          //MDH<-MDH+1, IDLE
         INRW+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
         INRW+4          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
@@ -178,7 +178,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         DCRW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
         DCRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
-        DCRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_MDH, SC_DST_MDH, 4'b1100, IDLE};               //MDH<-MDH-1, IDLE
+        DCRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_NOSOURCE, SC_DST_MDH, 4'b1100, IDLE};          //MDH<-MDH-1, IDLE
         DCRW+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
         DCRW+4          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
@@ -235,7 +235,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         LDAW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
         LDAW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
-        LDAW+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MDH, SA_DST_A, 2'b00, RD4};                    //A<-MD, RD4
+        LDAW+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MDH, SA_DST_A, 2'b00, RD4};                    //A<-MDH, RD4
 
         MOV_A_R1        : mc <= {MCTYPE0, 1'b0, 1'b1, SB_R1, SA_DST_A, 2'b00, RD4};                     //A<-r1, RD4
 
@@ -247,8 +247,27 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         DIV             : mc <= {MCTYPE1, 1'b0, 1'b1, SD_A, SC_DST_EA, 4'b0101, IDLE};                  //EA<-EA/r2, IDLE
         DIV+1           : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b11111, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop*16, IDLE
-        DIV+2           : mc <= {MCTYPE0, 1'b0, 1'b1, SB_TEMP, SA_DST_R2, 2'b00, RD4};                  //r2<-ALU temp, RD4
+        DIV+2           : mc <= {MCTYPE0, 1'b0, 1'b0, SB_TEMP, SA_DST_R2, 2'b00, RD4};                  //r2<-ALU temp, RD4
 
+        DMOV_EA_RP      : mc <= {MCTYPE0, 1'b0, 1'b1, SB_EA, SA_DST_RP, 2'b00, RD4};                    //EA<-rp, RD4
+
+        DMOV_SR3_EA     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        DMOV_SR3_EA+1   : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
+        DMOV_SR3_EA+2   : mc <= {MCTYPE0, 1'b0, 1'b0, SB_EA, SA_DST_SR3, 2'b00, RD4};                   //sr3<-EA, RD4
+
+        INR             : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_R2, 4'b1011, RD4};            //r2<-r2+1, IDLE
+
+        DMOV_EA_SR4     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        DMOV_EA_SR4+1   : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
+        DMOV_EA_SR4+2   : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SR4, SA_DST_EA, 2'b00, RD4};                   //EA<-sr4, RD4
+
+        DCR             : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_R2, 4'b1100, RD4};            //r2<-r2-1, IDLE
+
+        ALUW_A_WA       : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        ALUW_A_WA+1     : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
+        ALUW_A_WA+2     : mc <= {MCTYPE0, 1'b1, 1'b0, SB_MDH, SA_DST_A, 2'b10, RD4};                    //A<-A(op)MDH, RD4
+
+        DAA             : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_A, 4'b0010, RD4};             //A<-(op)A, IDLE
 
         NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 

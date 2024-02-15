@@ -86,6 +86,7 @@ localparam SD_MD         = 4'b0110;
 localparam SD_PC         = 4'b0111;
 localparam SD_SP         = 4'b1000;
 localparam SD_PSW        = 4'b1001;
+localparam SD_NOSOURCE   = 4'b1010;
 localparam SD_RPA        = 4'b1111;
 
 //MICROCODE ROUTINE ENTRANCE ADDRESS
@@ -149,6 +150,12 @@ localparam MUL              = 8'd152;
 localparam DMOV_RP_EA       = 8'd155;
 localparam DIV              = 8'd156;
 localparam DMOV_EA_RP       = 8'd159;
+localparam DMOV_SR3_EA      = 8'd160;
+localparam INR              = 8'd163;
+localparam DMOV_EA_SR4      = 8'd164;
+localparam DCR              = 8'd167;
+localparam ALUW_A_WA        = 8'd168;
+localparam DAA              = 8'd171;
 
 //1-cycle opcode group
 localparam NOP              = 8'd254;

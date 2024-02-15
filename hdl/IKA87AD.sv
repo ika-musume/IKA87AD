@@ -95,8 +95,16 @@ always @(*) begin
         else if( op[7:4] == 4'h1  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_R1_A;
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h1 ) mcrom_sa = LDAW;
         else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_A_R1;
+        else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_A_R1;
+        else if( op[7:4] == 4'h4  &&
+                (op[3:0] >  4'h0  &&  op[3:0] <  4'h4)) mcrom_sa = INR;
+        else if( op[7:4] == 4'h5  &&
+                (op[3:0] >  4'h0  &&  op[3:0] <  4'h4)) mcrom_sa = DCR;
         else if( op[7:4] == 4'hB  &&
                 (op[3:0] >  4'h4  &&  op[3:0] <  4'h8)) mcrom_sa = DMOV_RP_EA;
+        else if( op[7:4] == 4'hA  &&
+                (op[3:0] >  4'h4  &&  op[3:0] <  4'h8)) mcrom_sa = DMOV_EA_RP;
+        else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h1 ) mcrom_sa = DAA;
         
 
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
@@ -116,6 +124,10 @@ always @(*) begin
         else if( op[7:4] == 4'h8  &&  op[3:0] >  4'hA ) mcrom_sa = LDEAX_EA_RPA2;
         else if( op[7:4] == 4'h2  &&  op[3:0] >  4'hB ) mcrom_sa = MUL;
         else if( op[7:4] == 4'h3  &&  op[3:0] >  4'hB ) mcrom_sa = DIV;
+        else if( op[7:4] == 4'hC  &&  op[3:0] <  4'h2 ) mcrom_sa = DMOV_EA_SR4;
+        else if( op[7:4] == 4'hD  &&
+                (op[3:0] >  4'h1  &&  op[3:0] <  4'h4)) mcrom_sa = DMOV_SR3_EA;
+        
     end
     else if(opcode_page == 3'd4) begin
              if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_A_RPA;
@@ -129,6 +141,7 @@ always @(*) begin
     else if(opcode_page == 3'd5) begin
              if( op[7:4] <  4'h8)                       mcrom_sa = ALUI_R_IM;
         else if( op[7:4] >  4'h7  &&  op[2]   == 1'b1 ) mcrom_sa = DALU_EA_RP;
+        else if( op[7:4] >  4'h7  &&  op[2]   == 1'b0 ) mcrom_sa = ALUW_A_WA;
     end
 end
 
@@ -566,7 +579,7 @@ IKA87AD_microcode u_microcode (
     0111: PC
     1000: SP
     1001: PSW
-    1010:
+    1010: NO_SOURCE
     1011:
     1100: 
     1101: 

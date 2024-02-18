@@ -50,100 +50,18 @@ wire            mrst_n = i_RESET_n;
 
 reg     [2:0]   opcode_page; //page indicator
 reg     [7:0]   reg_OPCODE; //opcode register
-wire    [7:0]   op = reg_OPCODE; //alias signal
 
 //disassembler
 reg     [1:0]   reg_FULL_OPCODE_cntr;
 reg     [7:0]   reg_FULL_OPCODE_debug[0:3]; //wtf
 
-//microcode decoder
-reg     [7:0]   mcrom_sa; //microcode rom start address
-always @(*) begin
-    if(opcode_page == 3'd0) begin
-             if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) mcrom_sa = IRD;
-        else if( op[7:4] == 4'h6  &&  op[3:0] >  4'h7 ) mcrom_sa = MVI_R_IM;
-        else if( op[7:4] == 4'h3  &&  op[3:0] >  4'h8 ) mcrom_sa = STAX_RPA_A;
-        else if( op[7:4] == 4'h2  &&  op[3:0] >  4'h8 ) mcrom_sa = LDAX_A_RPA;
-        else if( op[7:4] <  4'h5  &&  op[3:0] == 4'h4 ) mcrom_sa = LXI_RP2_IM;
-        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'h2 ) mcrom_sa = INX_RP2;
-        else if( op[7:4] == 4'hA  &&  op[3:0] == 4'h8 ) mcrom_sa = INX_EA;
-        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'h3 ) mcrom_sa = DCX_RP2;
-        else if( op[7:4] == 4'hA  &&  op[3:0] == 4'h9 ) mcrom_sa = DCX_EA;
-        else if( op[7:4] == 4'h5  &&  op[3:0] == 4'h4 ) mcrom_sa = JMP;
-        else if( op[7:4] >  4'hB                      ) mcrom_sa = JR;
-        else if( op[7:4] <  4'h8  &&
-                (op[3:0] == 4'h6  ||  op[3:0] == 4'h7)) mcrom_sa = ALUI_A_IM;
-        else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h1 ) mcrom_sa = MVIW_WA_IM;
-        else if( op[7:4] == 4'hB  &&  op[3:0] >  4'hA ) mcrom_sa = STAX_RPA2_A;
-        else if( op[7:4] == 4'hA  &&  op[3:0] >  4'hA ) mcrom_sa = LDAX_A_RPA2;
-        else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h1 ) mcrom_sa = BLOCK;
-        else if( op[7:4] == 4'hB  &&  op[3:0] <  4'h5 ) mcrom_sa = PUSH;
-        else if( op[7:4] == 4'hA  &&  op[3:0] <  4'h5 ) mcrom_sa = POP;
-        else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h2 ) mcrom_sa = RETI;
-        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hD ) mcrom_sa = MOV_SR_A;
-        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'hC ) mcrom_sa = MOV_A_SR1;
-        else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h0 ) mcrom_sa = INRW;
-        else if( op[7:4] == 4'h3  &&  op[3:0] == 4'h0 ) mcrom_sa = DCRW;
-        else if( op[7:4] == 4'h4  &&
-                (op[3:0] >  4'h8  &&  op[3:0] <  4'hC)) mcrom_sa = MVIX_RPA_IM;
-        else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = CALF;
-        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'h0 ) mcrom_sa = CALL;
-        else if( op[7:4] >  4'h7  &&  op[7:4] <  4'hA ) mcrom_sa = CALT;
-        else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h2 ) mcrom_sa = SOFTI;
-        else if( op[7:4] == 4'h7  &&  op[3:0] == 4'h3 ) mcrom_sa = HARDI;
-        else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h3 ) mcrom_sa = STAW;
-        else if( op[7:4] == 4'h1  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_R1_A;
-        else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h1 ) mcrom_sa = LDAW;
-        else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_A_R1;
-        else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_A_R1;
-        else if( op[7:4] == 4'h4  &&
-                (op[3:0] >  4'h0  &&  op[3:0] <  4'h4)) mcrom_sa = INR;
-        else if( op[7:4] == 4'h5  &&
-                (op[3:0] >  4'h0  &&  op[3:0] <  4'h4)) mcrom_sa = DCR;
-        else if( op[7:4] == 4'hB  &&
-                (op[3:0] >  4'h4  &&  op[3:0] <  4'h8)) mcrom_sa = DMOV_RP_EA;
-        else if( op[7:4] == 4'hA  &&
-                (op[3:0] >  4'h4  &&  op[3:0] <  4'h8)) mcrom_sa = DMOV_EA_RP;
-        else if( op[7:4] == 4'h6  &&  op[3:0] == 4'h1 ) mcrom_sa = DAA;
-        
-
-        else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) mcrom_sa = NOP;
-        else                                            mcrom_sa = NOP;
-    end
-    else if(opcode_page == 3'd1) begin
-             if((op[7:4] == 4'h3  ||  op[7:4] == 4'hB) &&
-                (op[3:0] == 4'hB))                      mcrom_sa = SUSP;
-        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'h8 ) mcrom_sa = TABLE;
-        else if( op[7:4] == 4'h3  &&  op[3:1] == 3'h4 ) mcrom_sa = RLD_RRD;
-        else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h9 ) mcrom_sa = CALB;
-        else if( op[7:4] == 4'h9  &&
-                (op[3:0] >  4'h1  &&  op[3:0] <  4'h6)) mcrom_sa = STEAX_RPA_EA;
-        else if( op[7:4] == 4'h9  &&  op[3:0] >  4'hA ) mcrom_sa = STEAX_RPA2_EA;
-        else if( op[7:4] == 4'h8  &&
-                (op[3:0] >  4'h1  &&  op[3:0] <  4'h6)) mcrom_sa = LDEAX_EA_RPA;
-        else if( op[7:4] == 4'h8  &&  op[3:0] >  4'hA ) mcrom_sa = LDEAX_EA_RPA2;
-        else if( op[7:4] == 4'h2  &&  op[3:0] >  4'hB ) mcrom_sa = MUL;
-        else if( op[7:4] == 4'h3  &&  op[3:0] >  4'hB ) mcrom_sa = DIV;
-        else if( op[7:4] == 4'hC  &&  op[3:0] <  4'h2 ) mcrom_sa = DMOV_EA_SR4;
-        else if( op[7:4] == 4'hD  &&
-                (op[3:0] >  4'h1  &&  op[3:0] <  4'h4)) mcrom_sa = DMOV_SR3_EA;
-        
-    end
-    else if(opcode_page == 3'd4) begin
-             if( op[7:4] >  4'h7)                       mcrom_sa = ALUX_A_RPA;
-        else if((op[7:4] == 4'h4  &&  op[3:0] <  4'h4) ||
-                (op[7:4] == 4'h6  &&  op[3:0] <  4'h4)) mcrom_sa = EALU_EA_R2;
-        else if( op[7:4] == 4'h6  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_R_MEM;
-        else if( op[7:4] == 4'h7  &&  op[3:0] >  4'h7 ) mcrom_sa = MOV_MEM_R;
-        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'hF ) mcrom_sa = LD_RP2_MEM;
-        else if( op[7:4] <  4'h4  &&  op[3:0] == 4'hE ) mcrom_sa = ST_MEM_RP2;
-    end
-    else if(opcode_page == 3'd5) begin
-             if( op[7:4] <  4'h8)                       mcrom_sa = ALUI_R_IM;
-        else if( op[7:4] >  4'h7  &&  op[2]   == 1'b1 ) mcrom_sa = DALU_EA_RP;
-        else if( op[7:4] >  4'h7  &&  op[2]   == 1'b0 ) mcrom_sa = ALUW_A_WA;
-    end
-end
+//opcode decoder
+wire    [7:0]   mcrom_sa;
+IKA87AD_opdec u_opdec (
+    .i_OPCODE                   (reg_OPCODE                 ),
+    .i_OPCODE_PAGE              (opcode_page                ),
+    .o_MCROM_SA                 (mcrom_sa                   )
+);
 
 
 
@@ -178,11 +96,10 @@ wire    [3:0]   mc_sc_dst = mc_ctrl_output[9:6]; //microcode type 1, source c
 wire    [3:0]   mc_t1_alusel = mc_ctrl_output[5:2];
 
 //MICROCODE TYPE 2 FIELDS
-wire            mc_bk_iack       = mc_ctrl_output[13];
-wire    [1:0]   mc_bk_carry_ctrl = mc_ctrl_output[12:11];
-wire    [1:0]   mc_bk_int_ctrl   = mc_ctrl_output[10:9];
-wire    [1:0]   mc_bk_reg_exchg  = mc_ctrl_output[8:7];
-wire            mc_bk_cpu_susp   = mc_ctrl_output[6];
+wire            mc_bk_carry_ctrl = mc_ctrl_output[9];
+wire            mc_bk_int_ctrl   = mc_ctrl_output[8];
+wire    [1:0]   mc_bk_reg_exchg  = mc_ctrl_output[7:6];
+wire            mc_bk_cpu_susp   = mc_ctrl_output[5];
 wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
@@ -315,12 +232,7 @@ always @(posedge emuclk) begin
     if(!mrst_n) int_enabled <= 1'b0; 
     else begin
         if(cycle_tick) begin
-            if(mc_type == MCTYPE2) begin
-                if(mc_bk_iack) int_enabled <= 1'b0;
-                else begin
-                    if(mc_bk_int_ctrl[1] == 1'b1) int_enabled <= mc_bk_int_ctrl[0];
-                end
-            end
+            if(mc_type == MCTYPE2 && mc_bk_int_ctrl == 1'b1) int_enabled <= ~reg_OPCODE[4];
         end
     end
 end
@@ -628,28 +540,19 @@ IKA87AD_microcode u_microcode (
 
 
     3. BOOKKEEPING OPERATION
-    10_X_X_X_XX_XX_XX_XX_XXX_XX
+    10_X_X_-_-_-_X_X_XX_XX_XXX_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13]: IACK
-    D[12:11]: CARRY MOD
-        00: NOP
-        01: NOP
-        10: CARRY RESET
-        11: CARRY SET
-    D[10:9]: INTERRUPT
-        00: NOP
-        01: NOP
-        10: DI
-        11: EI
-    D[8:7]: EXCHANGE
+    D[13:10]: reserved
+    D[9]: CARRY MOD
+    D[8]: INTERRUPT E/D
+    D[7:6]: EXCHANGE
         00: NOP
         01: EXX
         10: EXA
         11: EXH
-    D[6]: CPU control - suspension
-    D[5]: reserved
+    D[5]: CPU control - suspension
     D[4:2]: SKIP control
         000: NOP
         001: SK
@@ -1349,6 +1252,8 @@ end
 //ALU port A and B
 reg     [15:0]  alu_pa, alu_pb; 
 always @(*) begin
+    alu_pa = 16'h0000; alu_pb = 16'h0000;
+
     if(mc_type == MCTYPE0) begin
         case(mc_sa_dst)
             SA_DST_R      : alu_pa = {8'h00, reg_R};
@@ -1439,10 +1344,10 @@ always @(*) begin
             alu_pa = reg_PC;
             alu_pb = reg_C == 8'hFF ? 16'h0000 : 16'hFFFF;
         end
-    end
-    else begin
-        alu_pa = 16'h0000;
-        alu_pb = 16'h0000;
+        else begin
+            alu_pa = 16'h0000;
+            alu_pb = 16'h0000;
+        end
     end
 end
 
@@ -1561,8 +1466,11 @@ wire    [15:0]  alu_mul_pb = reg_R2[alu_muldiv_cntr[2:0]] ? ({8'h00, reg_A} << a
 
 wire    [15:0]  alu_div_pa = reg_TEMP;
 wire    [15:0]  alu_div_pb = ~{8'h00, reg_R2};
-wire    [31:0]  alu_div_out = alu_adder_out[15] ? {{reg_TEMP, {reg_EAH, reg_EAL}}[30:0], 1'b0} :
-                                                  {{alu_adder_out, {reg_EAH, reg_EAL}}[30:0], 1'b1};
+
+wire    [31:0]  a = {reg_TEMP, {reg_EAH, reg_EAL}};
+wire    [31:0]  b = {alu_adder_out, {reg_EAH, reg_EAL}};
+wire    [31:0]  alu_div_out = alu_adder_out[15] ? {a[30:0], 1'b0} :
+                                                  {b[30:0], 1'b1};
 
 
 //
@@ -1835,7 +1743,7 @@ always @(*) begin
         end
     end
     else if(mc_type == MCTYPE2) begin
-        if(mc_bk_carry_ctrl[1] == 1'b1) c_comb = mc_bk_carry_ctrl[0];
+        if(mc_bk_carry_ctrl == 1'b1) c_comb = reg_OPCODE[0];
     end
 end
 
@@ -1931,7 +1839,7 @@ always @(*) begin
 end
 
 always @(*) begin
-    sk_comb = 1'b0;
+    sk_comb = 1'b0; //RETS, skip unconditionally
 
     if(mc_alter_flag) begin
         if(mc_type == MCTYPE0) begin
@@ -1945,7 +1853,6 @@ always @(*) begin
                     4'hD: sk_comb = z_comb;  //OR(skip condition: ZERO)
                     4'hE: sk_comb = ~z_comb; //SNE(skip condition: NO ZERO)
                     4'hF: sk_comb = z_comb;  //SEQ(skip condition: ZERO)
-                    default: sk_comb = 1'b0;
                 endcase
             end
         end
@@ -1954,7 +1861,6 @@ always @(*) begin
                 case(shift_code)
                     4'b0000: sk_comb = c_comb; //SLRC, skip condition: CARRY
                     4'b0100: sk_comb = c_comb; //SLLC, skip condition: CARRY
-                    default: sk_comb = 1'b0;
                 endcase
             end
             else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: CARRY
@@ -1971,9 +1877,10 @@ always @(*) begin
                 3'b011: sk_comb = reg_MDL[reg_OPCODE[2:0]]; //BIT
                 3'b100: sk_comb = iflag_muxed; //SKIT
                 3'b101: sk_comb = ~iflag_muxed; //SKNIT
-                default: sk_comb = 1'b0;
             endcase
         end
+
+        if(opcode_page == 3'd0 && reg_OPCODE == 8'hB9) sk_comb = 1'b1;
     end
 end
 

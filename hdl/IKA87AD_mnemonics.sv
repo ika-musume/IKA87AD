@@ -156,6 +156,10 @@ localparam DMOV_EA_SR4      = 8'd164;
 localparam DCR              = 8'd167;
 localparam ALUW_A_WA        = 8'd168;
 localparam DAA              = 8'd171;
+localparam JRE              = 8'd172;
+localparam NEGA             = 8'd175;
+localparam RET_RETS         = 8'd176;
+localparam STC_CLC          = 8'd179;
 
 //1-cycle opcode group
 localparam NOP              = 8'd254;

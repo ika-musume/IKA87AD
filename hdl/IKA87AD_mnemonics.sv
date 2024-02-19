@@ -160,7 +160,27 @@ localparam JRE              = 8'd172;
 localparam NEGA             = 8'd175;
 localparam RET_RETS         = 8'd176;
 localparam STC_CLC          = 8'd179;
+localparam BIT              = 8'd180;
+localparam EDI              = 8'd183;
+
+//opcode with branch microcode
+localparam ALUIW_WA_IM      = 8'd184;
+localparam ALUI_SR2_IM      = 8'd192;
 
 //1-cycle opcode group
+localparam ALU_A_R          = 8'd200;
+localparam ALU_R_A          = 8'd201;
+localparam BYTE_RS_R2       = 8'd202;
+localparam WORD_RS_EA       = 8'd203;
+localparam JB               = 8'd204;
+localparam JEA              = 8'd205;
+localparam EXX              = 8'd206;
+localparam EXA              = 8'd207;
+localparam EXH              = 8'd208;
+localparam SK               = 8'd209;
+localparam SKN              = 8'd210;
+localparam SKIT             = 8'd211;
+localparam SKNIT            = 8'd212;
+
 localparam NOP              = 8'd254;
 localparam IRD              = 8'd255;

@@ -106,15 +106,14 @@ wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
 wire    [4:0]   mc_s_nop         = mcrom_data[13:9];
 wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
 wire            mc_s_cond_read   = mc_ctrl_output[7];
-wire    [2:0]   mc_s_cond_branch = mc_ctrl_output[6:4];
+wire    [2:0]   mc_s_bra_on_alu  = mc_ctrl_output[6:4];
 wire            mc_s_swap_md_out = mc_ctrl_output[3];
+wire            mc_s_save_sr_addr = mc_ctrl_output[2];
 
 //ALU FIELDS
-wire    [3:0]   arith_code = mc_t0_alusel[0] ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
+wire    [3:0]   arith_code = opcode_page == 3'd0 ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
+wire            is_arith_eval_op = arith_code > 4'h9; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE?
 wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]};
-wire            arith_grp_comp = arith_code == 8'hA || arith_code == 8'hB || arith_code == 8'hC || arith_code == 8'hD ||
-                                 arith_code == 8'hE || arith_code == 8'hF || arith_code == 8'h2 || arith_code == 8'h3;
-
 
 
 ///////////////////////////////////////////////////////////
@@ -313,41 +312,41 @@ end
 localparam WAIT_FOR_DECODING = 1'b0;
 localparam RUNNING = 1'b1;
 
-reg             engine_state;
-reg     [3:0]   engine_suspension_cntr;
-reg     [2:0]   mc_cntr;
-reg     [2:0]   mc_cntr_next;
+reg             mseq_state;      //microsequencer state
+reg     [3:0]   mseq_susp_timer; //microsequencer suspension timer
+reg     [2:0]   mseq_cntr;       //microsequencer counter, registered output
+reg     [2:0]   mseq_cntr_next;  //microsequencer counter, "next" combinational output
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        engine_state <= WAIT_FOR_DECODING;
-        engine_suspension_cntr <= 4'd0;
-        mc_cntr <= 3'd0;
+        mseq_state <= WAIT_FOR_DECODING;
+        mseq_susp_timer <= 4'd0;
+        mseq_cntr <= 3'd0;
     end
     else begin
         if(mcrom_read_tick) begin
-            if(engine_state == RUNNING) begin
+            if(mseq_state == RUNNING) begin
                 if(mc_end_of_instruction) begin
-                    engine_state <= WAIT_FOR_DECODING;
-                    mc_cntr <= mc_cntr;
+                    mseq_state <= WAIT_FOR_DECODING;
+                    mseq_cntr <= mseq_cntr;
 
-                    engine_suspension_cntr <= 4'd0;
+                    mseq_susp_timer <= 4'd0;
                 end
                 else begin
-                    engine_state <= engine_state;
-                    mc_cntr <= mc_cntr_next;
+                    mseq_state <= mseq_state;
+                    mseq_cntr <= mseq_cntr_next;
 
                     if(mc_type == MCTYPE3 && mc_s_nop[4]) begin
-                        if(engine_suspension_cntr == mc_s_nop[3:0]) engine_suspension_cntr <= 4'd0;
-                        else engine_suspension_cntr <= engine_suspension_cntr + 4'd1;
+                        if(mseq_susp_timer == mc_s_nop[3:0]) mseq_susp_timer <= 4'd0;
+                        else mseq_susp_timer <= mseq_susp_timer + 4'd1;
                     end
                     else begin
-                        engine_suspension_cntr <= 4'd0;
+                        mseq_susp_timer <= 4'd0;
                     end
                 end
             end
             else begin
-                engine_state <= RUNNING;
-                mc_cntr <= mcrom_sa[2:0];
+                mseq_state <= RUNNING;
+                mseq_cntr <= mcrom_sa[2:0];
             end
         end
     end
@@ -355,22 +354,22 @@ end
 
 always @(*) begin
     if(mc_type == MCTYPE3 && mc_s_nop[4]) begin
-        if(engine_suspension_cntr == mc_s_nop[3:0]) mc_cntr_next = mc_cntr + 3'd1;
-        else mc_cntr_next = mc_cntr;
+        if(mseq_susp_timer == mc_s_nop[3:0]) mseq_cntr_next = mseq_cntr + 3'd1;
+        else mseq_cntr_next = mseq_cntr;
     end
-    else if(mc_type == MCTYPE3 && mc_s_cond_branch[2]) begin
-        if(arith_grp_comp) mc_cntr_next = mc_cntr + 3'd1 + ({1'b0, mc_s_cond_branch[1:0]} + 3'd1);
-        else mc_cntr_next = mc_cntr + 3'd1;
+    else if(mc_type == MCTYPE3 && mc_s_bra_on_alu != 3'd0 ) begin
+        if(is_arith_eval_op) mseq_cntr_next = mseq_cntr + mc_s_bra_on_alu + 3'd1;
+        else mseq_cntr_next = mseq_cntr + 3'd1;
     end
     else begin
-        mc_cntr_next = mc_cntr + 3'd1;
+        mseq_cntr_next = mseq_cntr + 3'd1;
     end
 end
 
 reg     [7:0]   mcrom_addr;
 always @(*) begin
-    if(engine_state == WAIT_FOR_DECODING) mcrom_addr = mcrom_sa;
-    else mcrom_addr = mc_end_of_instruction ? IRD : {mcrom_sa[7:3], mc_cntr_next};
+    if(mseq_state == WAIT_FOR_DECODING) mcrom_addr = mcrom_sa;
+    else mcrom_addr = mc_end_of_instruction ? IRD : {mcrom_sa[7:3], mseq_cntr_next};
 end
 
 
@@ -464,8 +463,7 @@ IKA87AD_microcode u_microcode (
     D[3:2] ALU operation type:
         00: bypass(source2 -> source1)
         01: add
-        10: ALU operation(field type 0) - OPCODE[6:3]
-        11: ALU operation(field type 1) - OPCODE[6:4], OPCODE[0] (single byte inst) 
+        1X: ALU operation - OPCODE[6:3] / OPCODE[6:4], OPCODE[0] (single byte inst) 
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -555,13 +553,13 @@ IKA87AD_microcode u_microcode (
     D[5]: CPU control - suspension
     D[4:2]: SKIP control
         000: NOP
-        001: SK
-        010: SKN
+        001: reserved
+        010: reserved
         011: BIT
-        100: SKIT
-        101: SKNIT
-        110: reserved
-        111: reserved
+        100: SK
+        101: SKN
+        110: SKIT
+        111: SKNIT
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -577,8 +575,9 @@ IKA87AD_microcode u_microcode (
     D[12:9]: nop cycles 0=>1cycle, 15=16cycles
     D[8]: conditional PC decrement(BLOCK)
     D[7]: conditional read(rpa+byte or register)
-    D[6:4]: conditional branch on ALU type, branch+ steps [5:4]0=>+2 3=>+5
+    D[6:4]: conditional branch on ALU type, branch+ steps
     D[3]: swap MD output order
+    D[2]: save special register address
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -1392,45 +1391,45 @@ always @(*) begin
     alu_shifter = 16'h00;
     alu_shifter_co = 1'b0;
 
-    if(mc_type == MCTYPE1) if(mc_t1_alusel == 4'h6) begin
+    if(mc_type == MCTYPE1) if(mc_t1_alusel == 4'h7) begin
         case(shift_code)
             4'b0000: begin alu_shifter[7] = 1'b0; 
-                           alu_shifter[6:0] = alu_pb[7:1];
-                           alu_shifter_co = alu_pb[0]; end //SLRC, skip condition: CARRY
+                           alu_shifter[6:0] = alu_pa[7:1];
+                           alu_shifter_co = alu_pa[0]; end //SLRC, skip condition: CARRY
             4'b0001: ; //no instruction specified
             4'b0010: begin alu_shifter[7] = 1'b0; 
-                           alu_shifter[6:0] = alu_pb[7:1];
-                           alu_shifter_co = alu_pb[0]; end //SLR
+                           alu_shifter[6:0] = alu_pa[7:1];
+                           alu_shifter_co = alu_pa[0]; end //SLR
             4'b0011: begin alu_shifter[7] = flag_C;
-                           alu_shifter[6:0] = alu_pb[7:1];
-                           alu_shifter_co = alu_pb[0]; end //RLR
+                           alu_shifter[6:0] = alu_pa[7:1];
+                           alu_shifter_co = alu_pa[0]; end //RLR
             4'b0100: begin alu_shifter[0] = 1'b0; 
-                           alu_shifter[7:1] = alu_pb[6:0];
-                           alu_shifter_co = alu_pb[7]; end //SLLC, skip condition: CARRY
+                           alu_shifter[7:1] = alu_pa[6:0];
+                           alu_shifter_co = alu_pa[7]; end //SLLC, skip condition: CARRY
             4'b0101: ; //no instruction specified
             4'b0110: begin alu_shifter[0] = 1'b0; 
-                           alu_shifter[7:1] = alu_pb[6:0];
-                           alu_shifter_co = alu_pb[7]; end //SLL
+                           alu_shifter[7:1] = alu_pa[6:0];
+                           alu_shifter_co = alu_pa[7]; end //SLL
             4'b0111: begin alu_shifter[0] = flag_C;
-                           alu_shifter[7:1] = alu_pb[6:0];
-                           alu_shifter_co = alu_pb[7]; end //RLL
+                           alu_shifter[7:1] = alu_pa[6:0];
+                           alu_shifter_co = alu_pa[7]; end //RLL
 
             4'b1000: ; //no instruction specified
             4'b1001: ; //no instruction specified
             4'b1010: begin alu_shifter[15] = 1'b0;
-                           alu_shifter[14:0] = alu_pb[15:1];
-                           alu_shifter_co = alu_pb[0]; end //DSLR
+                           alu_shifter[14:0] = alu_pa[15:1];
+                           alu_shifter_co = alu_pa[0]; end //DSLR
             4'b1011: begin alu_shifter[15] = flag_C;
-                           alu_shifter[14:0] = alu_pb[15:1];
-                           alu_shifter_co = alu_pb[0]; end //DRLR
+                           alu_shifter[14:0] = alu_pa[15:1];
+                           alu_shifter_co = alu_pa[0]; end //DRLR
             4'b1100: ; //no instruction specified
             4'b1101: ; //no instruction specified
             4'b1110: begin alu_shifter[0] = 1'b0;
-                           alu_shifter[15:1] = alu_pb[14:0];
-                           alu_shifter_co = alu_pb[15]; end //DSLL
+                           alu_shifter[15:1] = alu_pa[14:0];
+                           alu_shifter_co = alu_pa[15]; end //DSLL
             4'b1111: begin alu_shifter[0] = flag_C;
-                           alu_shifter[15:1] = alu_pb[14:0];
-                           alu_shifter_co = alu_pb[15]; end //DRLL
+                           alu_shifter[15:1] = alu_pa[14:0];
+                           alu_shifter_co = alu_pa[15]; end //DRLL
         endcase
     end
 end
@@ -1733,7 +1732,7 @@ always @(*) begin
             c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
         end
         else if(mc_t1_alusel == 4'h7) begin //shift 
-            c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
+            c_comb = alu_shifter_co;
         end
         else if(mc_t1_alusel == 4'hB) begin //INC
             c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
@@ -1872,11 +1871,11 @@ always @(*) begin
         end
         else if(mc_type == MCTYPE2) begin
             case(mc_bk_skip_ctrl)
-                3'b001: sk_comb = skip_flag;  //SK
-                3'b010: sk_comb = ~skip_flag; //SKN
-                3'b011: sk_comb = reg_MDL[reg_OPCODE[2:0]]; //BIT
-                3'b100: sk_comb = iflag_muxed; //SKIT
-                3'b101: sk_comb = ~iflag_muxed; //SKNIT
+                3'b011: sk_comb = reg_MDH[reg_OPCODE[2:0]]; //BIT
+                3'b100: sk_comb = skip_flag;  //SK
+                3'b101: sk_comb = ~skip_flag; //SKN
+                3'b110: sk_comb = iflag_muxed; //SKIT
+                3'b111: sk_comb = ~iflag_muxed; //SKNIT
             endcase
         end
 

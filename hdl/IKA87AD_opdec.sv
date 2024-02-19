@@ -64,10 +64,12 @@ always @(*) begin
         else if( op[7:4] == 4'h4  &&  op[3:0] >  4'hD ) sa = JRE;
         else if( op[7:4] == 4'hB  &&
                 (op[3:0] == 4'h8  ||  op[3:0] == 4'h9)) sa = RET_RETS;
-        
-
+        else if( op[7:4] <  4'h8  &&  op[3:0] == 4'h5 ) sa = ALUIW_WA_IM;
+        else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h1 ) sa = JB;
+        else if( op[7:4] == 4'h5  &&  op[3:0] >  4'h7 ) sa = BIT;
+        else if((op[7:4] == 4'hA  ||  op[7:4] == 4'hB) &&
+                (op[3:0] == 4'hA))                      sa = EDI;
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) sa = NOP;
-        else                                            sa = NOP;
     end
     else if(opcode_page == 3'd1) begin
              if((op[7:4] == 4'h3  ||  op[7:4] == 4'hB) &&
@@ -89,7 +91,21 @@ always @(*) begin
         else if( op[7:4] == 4'h3  &&  op[3:0] == 4'hA ) sa = NEGA;
         else if( op[7:4] == 4'h2  &&
                 (op[3:0] == 4'hA  ||  op[3:0] == 4'hB)) sa = STC_CLC;
-        
+        else if( op[7:4] <  4'h4  &&  op[3:0] <  4'h8 ) sa = BYTE_RS_R2;
+        else if((op[7:4] == 4'hA  ||  op[7:4] == 4'hB) &&
+                (op[3:0] <  4'h8))                      sa = WORD_RS_EA;
+        else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h8 ) sa = JEA;
+        else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) sa = SK;
+        else if( op[7:4] == 4'h1  &&  op[3:0] >  4'h7 ) sa = SKN;
+        else if( op[7:4] == 4'h4  ||  op[7:4] == 4'h5 ) sa = SKIT;
+        else if( op[7:4] == 4'h6  ||  op[7:4] == 4'h7 ) sa = SKNIT;
+    end
+    else if(opcode_page == 3'd2) begin
+             if( op[7]   == 1'b0                      ) sa = ALU_R_A;
+        else                                            sa = ALU_A_R;
+    end
+    else if(opcode_page == 3'd3) begin
+                                                        sa = ALUI_SR2_IM;
     end
     else if(opcode_page == 3'd4) begin
              if( op[7:4] >  4'h7)                       sa = ALUX_A_RPA;

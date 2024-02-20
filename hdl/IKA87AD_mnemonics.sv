@@ -181,6 +181,7 @@ localparam SK               = 8'd209;
 localparam SKN              = 8'd210;
 localparam SKIT             = 8'd211;
 localparam SKNIT            = 8'd212;
+localparam NOP              = 8'd213;
 
-localparam NOP              = 8'd254;
+//instruction read(similar to nop but cannot be skipped)
 localparam IRD              = 8'd255;

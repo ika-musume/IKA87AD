@@ -16,6 +16,10 @@ module IKA87AD (
     input   wire                i_NMI_n,
     input   wire                i_INT1,
 
+    output  wire                test_IFLAG_NMI,
+    output  wire                test_IFLAG_TIMER0,
+    output  wire                test_IFLAG,
+
     //port C I/O and DIRECTION
     input   wire    [7:0]       i_PC_I,
     output  wire    [7:0]       o_PC_O,
@@ -97,7 +101,7 @@ wire    [3:0]   mc_t1_alusel = mc_ctrl_output[5:2];
 
 //MICROCODE TYPE 2 FIELDS
 wire            mc_bk_carry_ctrl = mc_ctrl_output[9];
-wire            mc_bk_int_ctrl   = mc_ctrl_output[8];
+wire            mc_bk_irq_ctrl   = mc_ctrl_output[8];
 wire    [1:0]   mc_bk_reg_exchg  = mc_ctrl_output[7:6];
 wire            mc_bk_cpu_susp   = mc_ctrl_output[5];
 wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
@@ -175,111 +179,98 @@ end
 ////
 
 //interrupt related registers
-wire    [9:0]   int_mask; //interrupt mask register: (MSB)empty, full, adc, ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0(LSB)
-reg             int_enabled;
-
-//interrupt flags
-reg             iflag_NMI; //nNMI physical pin input, takes maximum 10us to suppress glitch
-reg             iflag_TIMER0, iflag_TIMER1; //timer 0/1 match interrupt
-reg             iflag_pINT1, iflag_nINT2; //INT1, nINT2 physical pin input, takes 12+2 mcuclk cycles to suppress gluitch
-reg             iflag_CNTR0, iflag_CNTR1; //timer/event counter 0/1 match interrupt
-reg             iflag_nCNTRCIN; //falling edge of the timer/event countr input (CI input) or timer output (TO) -> from the datasheet
-reg             iflag_ADC; //adc conversion complete
-reg             iflag_BUFFULL, iflag_BUFEMPTY; //UART buffer full/empty
-
-//interrupt sources(wire)
-wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
-
-//interrupt priority
-reg     [2:0]   int_lv;
-always @(*) begin
-    if(reg_OPCODE == 8'h72) begin
-        int_lv = 3'd0; //SOFTI
-    end
-    else begin
-        casez({is_NMI, (is_TIMER0 | is_TIMER1), (is_pINT1 | is_nINT2), (is_CNTR0 | is_CNTR1), (is_nCNTRCIN | is_ADC), (is_BUFFULL | is_BUFEMPTY)})
-            6'b1?????: int_lv = 3'd1;
-            6'b01????: int_lv = 3'd2;
-            6'b001???: int_lv = 3'd3;
-            6'b0001??: int_lv = 3'd4;
-            6'b00001?: int_lv = 3'd5;
-            6'b000001: int_lv = 3'd6;
-            6'b000000: int_lv = 3'd7; //spurious interrupt
-            default: int_lv = 3'd7;
-        endcase
-    end
-end
-
-//interrupt routine address
-reg     [15:0]  int_addr;
-wire    [15:0]  spurious_int_addr;
-always @(*) begin
-    case(int_lv)
-        3'b000: int_addr = 16'h0060; //SOFTI
-        3'b001: int_addr = 16'h0004; //NMI
-        3'b010: int_addr = 16'h0018; //TIMER
-        3'b011: int_addr = 16'h0010; //INT PIN
-        3'b100: int_addr = 16'h0018; //COUNTER RELATED
-        3'b101: int_addr = 16'h0020; //ADC
-        3'b110: int_addr = 16'h0028; //SERIAL INTERFACE
-        3'b111: int_addr = spurious_int_addr; //not specified
-    endcase
-end
+wire    [9:0]   irq_mask_n; //interrupt mask register: (MSB)empty, full, adc, ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0(LSB)
+reg             irq_enabled;
 
 //interrupt enable(1), disable(0)
 always @(posedge emuclk) begin
-    if(!mrst_n) int_enabled <= 1'b0; 
-    else begin
-        if(cycle_tick) begin
-            if(mc_type == MCTYPE2 && mc_bk_int_ctrl == 1'b1) int_enabled <= ~reg_OPCODE[4];
-        end
-    end
+    if(!mrst_n) irq_enabled <= 1'b0; 
+    else begin if(cycle_tick) begin
+        if(mc_type == MCTYPE2 && mc_bk_irq_ctrl == 1'b1) irq_enabled <= ~reg_OPCODE[4];
+    end end
 end
 
+//interrupt sources(wire)
+wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
+wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is_CNTR0, is_nINT2, is_pINT1, is_TIMER1, is_TIMER0, is_NMI};
+
+
+//interrupt flags
+wire    [10:0]  iflag;
+/*
+wire            iflag_NMI       = iflag[0]; //nNMI physical pin input, takes maximum 10us to suppress glitch
+wire            iflag_TIMER0    = iflag[1]; //timer 0/1 match interrupt
+wire            iflag_TIMER1    = iflag[2]; 
+wire            iflag_pINT1     = iflag[3]; //INT1, nINT2 physical pin input, takes 12+2 mcuclk cycles to suppress glitch
+wire            iflag_nINT2     = iflag[4]; 
+wire            iflag_CNTR0     = iflag[5]; //timer/event counter 0/1 match interrupt
+wire            iflag_CNTR1     = iflag[6]; 
+wire            iflag_nCNTRCIN  = iflag[7]; //falling edge of the timer/event countr input (CI input) or timer output (TO) -> from the datasheet
+wire            iflag_ADC       = iflag[8]; //adc conversion complete
+wire            iflag_BUFFULL   = iflag[9]; //UART buffer full/empty
+wire            iflag_BUFEMPTY  = iflag[10];
+*/
+
+//A user should ack an iflag manually when both interrupt sources belonging to a same irq level are not masked
+wire            iflag_manual_ack = mc_type == MCTYPE2 && mc_bk_skip_ctrl[2:1] == 2'b11; 
+
+//An iflag is acknowledged when the HARDI instruction starts
+wire            iflag_auto_ack = opcode_page == 3'd0 && reg_OPCODE == 8'h73;
+
 //note that interrupt sampler uses an independent divided clock
-always @(posedge emuclk) begin
-    if(!mrst_n) begin
-        iflag_NMI <= 1'b0;
-        iflag_TIMER0 <= 1'b0; iflag_TIMER1 <= 1'b0;
-        iflag_pINT1 <= 1'b0; iflag_nINT2 <= 1'b0;
-        iflag_CNTR0 <= 1'b0; iflag_CNTR1 <= 1'b0;
-        iflag_nCNTRCIN <= 1'b0;
-        iflag_ADC <= 1'b0;
-        iflag_BUFFULL <= 1'b0; iflag_BUFEMPTY <= 1'b0;
-    end
-    else begin
-        if(cycle_tick) begin
-            //NMI interrupt flag set/reset
-            if(is_NMI) iflag_NMI <= 1'b1;
-            else begin if(reg_OPCODE == 8'h73) iflag_NMI <= 1'b0; end
+//NMI interrupt flag set/reset
+IKA87AD_iflag u_nmi         (mrst_n, emuclk, cycle_tick, is[0], 1'b1, 5'd0, reg_OPCODE[4:0], 
+                            1'b0, 1'b0, reg_OPCODE == 8'h73, iflag[0]);
 
-            if(is_TIMER0 & ~int_mask[0]) iflag_TIMER0 <= 1'b1; //masked interrupt
-            else begin
-                if(~|(int_mask[1:0])) begin
-                    if(mc_type == MCTYPE2 && mc_bk_skip_ctrl[2] == 1'b1 && reg_OPCODE[4:0] == 5'd1) iflag_TIMER0 <= 1'b0; //manual ack
-                end
-                else begin 
-                    if(reg_OPCODE == 8'h73) iflag_TIMER0 <= 1'b0; 
-                end
-            end
+//Timer0/1 interrupt flag set/reset
+IKA87AD_iflag u_timer0      (mrst_n, emuclk, cycle_tick, is[1], irq_mask_n[0], 5'd1, reg_OPCODE[4:0], 
+                            &{irq_mask_n[1:0]}, iflag_manual_ack, iflag_auto_ack, iflag[1]);
+IKA87AD_iflag u_timer1      (mrst_n, emuclk, cycle_tick, is[2], irq_mask_n[1], 5'd2, reg_OPCODE[4:0], 
+                            &{irq_mask_n[1:0]}, iflag_manual_ack, iflag_auto_ack, iflag[2]);
 
-            if(is_TIMER1 & ~int_mask[1]) iflag_TIMER1 <= 1'b1; //masked interrupt
-            else begin
-                if(~|(int_mask[1:0])) begin
-                    if(mc_type == MCTYPE2 && mc_bk_skip_ctrl[2] == 1'b1 && reg_OPCODE[4:0] == 5'd2) iflag_TIMER1 <= 1'b0; //manual ack
-                end
-                else begin 
-                    if(reg_OPCODE == 8'h73) iflag_TIMER1 <= 1'b0; 
-                end
-            end
-        end
-    end
+//interrupt priority
+wire    [6:0]   masked_irq =   { opcode_page == 3'd0 && reg_OPCODE == 8'h72, 
+                                 iflag[0],
+                                (iflag[1] & irq_mask_n[0]) | (iflag[2] & irq_mask_n[1]),
+                                (iflag[3] & irq_mask_n[2]) | (iflag[4] & irq_mask_n[3]),
+                                (iflag[5] & irq_mask_n[4]) | (iflag[6] & irq_mask_n[5]),
+                                (iflag[7] & irq_mask_n[6]) | (iflag[8] & irq_mask_n[7]),
+                                (iflag[9] & irq_mask_n[8]) | (iflag[10] & irq_mask_n[9])};
+
+
+reg     [2:0]   irq_lv, irq_lv_z;
+always @(*) begin
+    casez(masked_irq)
+        7'b1??????: irq_lv = 3'd0;
+        7'b01?????: irq_lv = 3'd1;
+        7'b001????: irq_lv = 3'd2;
+        7'b0001???: irq_lv = 3'd3;
+        7'b00001??: irq_lv = 3'd4;
+        7'b000001?: irq_lv = 3'd5;
+        7'b0000001: irq_lv = 3'd6;
+        7'b0000000: irq_lv = 3'd7; //spurious interrupt
+        default: irq_lv = 3'd7;
+    endcase
+end
+
+//interrupt routine address
+reg     [15:0]  irq_addr;
+wire    [15:0]  spurious_irq_addr;
+always @(*) begin
+    case(irq_lv)
+        3'b000: irq_addr = 16'h0060; //SOFTI
+        3'b001: irq_addr = 16'h0004; //NMI
+        3'b010: irq_addr = 16'h0018; //TIMER
+        3'b011: irq_addr = 16'h0010; //INT PIN
+        3'b100: irq_addr = 16'h0018; //COUNTER RELATED
+        3'b101: irq_addr = 16'h0020; //ADC
+        3'b110: irq_addr = 16'h0028; //SERIAL INTERFACE
+        3'b111: irq_addr = spurious_irq_addr; //not specified
+    endcase
 end
 
 //interrupt flag selector
 reg             iflag_muxed;
-
-
 
 
 
@@ -841,9 +832,9 @@ reg     [15:0]  reg_TEMP;
 //  Special registers
 //
 
-reg     [6:0]   reg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0
+reg     [6:0]   reg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
 reg     [2:0]   reg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
-assign int_mask = {reg_MKH, reg_MKL};
+assign irq_mask_n = ~{reg_MKH, reg_MKL};
 
 
 //
@@ -860,11 +851,11 @@ wire    [7:0]   reg_PSW = {1'b0, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b
 
 reg     [15:0]  reg_PC, reg_SP, reg_MA;
 reg     [15:0]  next_pc;
-assign  spurious_int_addr = reg_PC;
+assign  spurious_irq_addr = reg_PC;
 
 //address source selector
-localparam PC = 2'b0;
-localparam MA = 2'b1;
+localparam PC = 1'b0;
+localparam MA = 1'b1;
 reg             address_source_sel;
 reg             reg_PC_inc_stop, reg_MA_inc_ndec;
 reg     [15:0]  memory_access_address;
@@ -1295,7 +1286,7 @@ always @(*) begin
             SB_ADDR_FA    : alu_pb = {5'b00001, reg_OPCODE[2:0], reg_MDI[7:0]};
             SB_ADDR_REL_S : alu_pb = {{11{reg_OPCODE[5]}}, reg_OPCODE[4:0]}; //sign extension
             SB_ADDR_REL_L : alu_pb = {{8{reg_OPCODE[0]}}, reg_MDI[7:0]};
-            SB_ADDR_INT   : alu_pb = int_addr; //selected externally
+            SB_ADDR_INT   : alu_pb = irq_addr; //selected externally
             SB_SUB2       : alu_pb = 16'hFFFE;
             SB_SUB1       : alu_pb = 16'hFFFF;
             SB_ZERO       : alu_pb = 16'h0000;
@@ -1954,7 +1945,7 @@ end
 //At the end of the opcode/data fetch cycle, read the successive instruction 
 //by forcing the next_bus_acc as "RD4"
 always @(*) begin
-    if(|{flag_SK, flag_L1, flag_L0} && !(reg_OPCODE == 8'h72 || reg_OPCODE == 8'h73)) begin
+    if(|{flag_SK, flag_L1, flag_L0} && !(opcode_page == 3'd0 && (reg_OPCODE == 8'h72 || reg_OPCODE == 8'h73))) begin
         if(mc_jump_to_next_inst) mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
         else mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, mcrom_data[1:0]};
     end

@@ -334,7 +334,8 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         SKIT            : mc <= {MCTYPE2, 1'b1, 1'b1, 4'b0000, 1'b0, 1'b0, 2'b00, 1'b0, 3'b110, RD4};   //skip if interrupt
         SKNIT           : mc <= {MCTYPE2, 1'b1, 1'b1, 4'b0000, 1'b0, 1'b0, 2'b00, 1'b0, 3'b111, RD4};   //skip if no interrupt
 
-        8'd213          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
+        NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
         8'd214          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
         8'd215          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
         8'd216          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
@@ -375,8 +376,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         8'd251          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
         8'd252          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
         8'd253          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
-
-        NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+        8'd254          : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
 
         IRD             : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //wait for decoding
     endcase

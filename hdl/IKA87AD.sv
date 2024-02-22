@@ -1,3 +1,5 @@
+`timescale 10ps/10ps
+
 module IKA87AD (
     //clock
     input   wire                i_EMUCLK,
@@ -130,6 +132,7 @@ reg     [1:0]   current_bus_acc;
 wire    opcode_tick = timing_sr[11] & current_bus_acc == RD4 & mcuclk_pcen;
 wire    rw_tick = timing_sr[8] & current_bus_acc != RD4 & mcuclk_pcen;
 wire    cycle_tick = opcode_tick | rw_tick;
+wire    div3_tick = |{timing_sr[2], timing_sr[5], timing_sr[8], timing_sr[11]};
 
 assign  mcrom_read_tick = (timing_sr[8] | timing_sr[11]) & mcuclk_pcen;
 
@@ -179,16 +182,8 @@ end
 ////
 
 //interrupt related registers
-wire    [9:0]   irq_mask_n; //interrupt mask register: (MSB)empty, full, adc, ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0(LSB)
+wire    [10:0]  irq_mask_n; //interrupt mask register: (MSB)empty, full, adc, ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0(LSB), 1'b1
 reg             irq_enabled;
-
-//interrupt enable(1), disable(0)
-always @(posedge emuclk) begin
-    if(!mrst_n) irq_enabled <= 1'b0; 
-    else begin if(cycle_tick) begin
-        if(mc_type == MCTYPE2 && mc_bk_irq_ctrl == 1'b1) irq_enabled <= ~reg_OPCODE[4];
-    end end
-end
 
 //interrupt sources(wire)
 wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
@@ -196,7 +191,7 @@ wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is
 
 
 //interrupt flags
-wire    [10:0]  iflag;
+wire    [10:0]  iflag; assign iflag[10:2] = 10'd0;
 /*
 wire            iflag_NMI       = iflag[0]; //nNMI physical pin input, takes maximum 10us to suppress glitch
 wire            iflag_TIMER0    = iflag[1]; //timer 0/1 match interrupt
@@ -211,62 +206,137 @@ wire            iflag_BUFFULL   = iflag[9]; //UART buffer full/empty
 wire            iflag_BUFEMPTY  = iflag[10];
 */
 
+//softi/hardi processing cycle
+wire            softi_proc_cyc = opcode_page == 3'd0 && reg_OPCODE == 8'h72;
+wire            hardi_proc_cyc = opcode_page == 3'd0 && reg_OPCODE == 8'h73;
+
 //A user should ack an iflag manually when both interrupt sources belonging to a same irq level are not masked
 wire            iflag_manual_ack = mc_type == MCTYPE2 && mc_bk_skip_ctrl[2:1] == 2'b11; 
 
 //An iflag is acknowledged when the HARDI instruction starts
-wire            iflag_auto_ack = opcode_page == 3'd0 && reg_OPCODE == 8'h73;
+wire            iflag_auto_ack = hardi_proc_cyc && mc_end_of_instruction;
+
+//test
+reg nmi = 1'b0;
+reg t0 = 1'b0;
+initial begin
+    #432 nmi = 1'b1; t0 = 1'b1;
+    #10  nmi = 1'b0; t0 = 1'b0;
+
+    //#200 t0 = 1'b1;
+    //#10 t0 = 1'b0;
+end
+
+//interrupt priority
+wire    [5:0]   masked_irq =   { iflag[0] & irq_mask_n[0],
+                                (iflag[1] & irq_mask_n[1]) | (iflag[2] & irq_mask_n[2]),
+                                (iflag[3] & irq_mask_n[3]) | (iflag[4] & irq_mask_n[4]),
+                                (iflag[5] & irq_mask_n[5]) | (iflag[6] & irq_mask_n[6]),
+                                (iflag[7] & irq_mask_n[7]) | (iflag[8] & irq_mask_n[8]),
+                                (iflag[9] & irq_mask_n[9]) | (iflag[10] & irq_mask_n[10])};
+
+reg     [2:0]   irq_lv;
+always @(*) begin
+    casez(masked_irq)
+        6'b1?????: irq_lv = 3'd7; //NMI
+        6'b01????: irq_lv = 3'd6;
+        6'b001???: irq_lv = 3'd5;
+        6'b0001??: irq_lv = 3'd4;
+        6'b00001?: irq_lv = 3'd3;
+        6'b000001: irq_lv = 3'd2;
+        6'b000000: irq_lv = 3'd1; //spurious interrupt
+        default: irq_lv = 3'd0;
+    endcase
+end
 
 //note that interrupt sampler uses an independent divided clock
 //NMI interrupt flag set/reset
-IKA87AD_iflag u_nmi         (mrst_n, emuclk, cycle_tick, is[0], 1'b1, 5'd0, reg_OPCODE[4:0], 
-                            1'b0, 1'b0, reg_OPCODE == 8'h73, iflag[0]);
+IKA87AD_iflag u_nmi         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, nmi, 1'b1, 5'd0, reg_OPCODE[4:0], 
+                            1'b0, 1'b0, iflag_auto_ack && irq_lv == 3'd7, iflag[0]);
 
 //Timer0/1 interrupt flag set/reset
-IKA87AD_iflag u_timer0      (mrst_n, emuclk, cycle_tick, is[1], irq_mask_n[0], 5'd1, reg_OPCODE[4:0], 
-                            &{irq_mask_n[1:0]}, iflag_manual_ack, iflag_auto_ack, iflag[1]);
-IKA87AD_iflag u_timer1      (mrst_n, emuclk, cycle_tick, is[2], irq_mask_n[1], 5'd2, reg_OPCODE[4:0], 
-                            &{irq_mask_n[1:0]}, iflag_manual_ack, iflag_auto_ack, iflag[2]);
-
-//interrupt priority
-wire    [6:0]   masked_irq =   { opcode_page == 3'd0 && reg_OPCODE == 8'h72, 
-                                 iflag[0],
-                                (iflag[1] & irq_mask_n[0]) | (iflag[2] & irq_mask_n[1]),
-                                (iflag[3] & irq_mask_n[2]) | (iflag[4] & irq_mask_n[3]),
-                                (iflag[5] & irq_mask_n[4]) | (iflag[6] & irq_mask_n[5]),
-                                (iflag[7] & irq_mask_n[6]) | (iflag[8] & irq_mask_n[7]),
-                                (iflag[9] & irq_mask_n[8]) | (iflag[10] & irq_mask_n[9])};
+IKA87AD_iflag u_timer0      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, t0, irq_mask_n[0], 5'd1, reg_OPCODE[4:0], 
+                            &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[1]);
+IKA87AD_iflag u_timer1      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[2], irq_mask_n[1], 5'd2, reg_OPCODE[4:0], 
+                            &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[2]);
 
 
-reg     [2:0]   irq_lv, irq_lv_z;
-always @(*) begin
-    casez(masked_irq)
-        7'b1??????: irq_lv = 3'd0;
-        7'b01?????: irq_lv = 3'd1;
-        7'b001????: irq_lv = 3'd2;
-        7'b0001???: irq_lv = 3'd3;
-        7'b00001??: irq_lv = 3'd4;
-        7'b000001?: irq_lv = 3'd5;
-        7'b0000001: irq_lv = 3'd6;
-        7'b0000000: irq_lv = 3'd7; //spurious interrupt
-        default: irq_lv = 3'd7;
-    endcase
+
+
+
+//interrupt generation
+/*
+    possible edge case: when both IRQ sources in a certain group are not masked,
+    iflags will no be automatically acknowledged. A user should turn off these flags
+    manually. IRQ detection is conducted by checking IRQ level generated by iflags.
+    If all iflags are not reset, IRQ level will not change and IRQ with lower level
+    still remaining blocked until all iflags in current level are cleared. I think
+    almost all softwares disable interrupt while processing an interrupt routine
+    correspond to the current IRQ level. I should check the behavior of the chip by
+    allowing interrupt acceptance immediately after pushing PC and PSW into a stack.
+*/
+reg     [2:0]   irq_lv_z;
+reg             irq_pending;
+wire            irq_detected = irq_pending & irq_enabled;
+always @(posedge emuclk) if(mcuclk_pcen) begin
+    irq_lv_z <= irq_lv;
+end
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        irq_pending <= 1'b0;
+    end
+    else begin
+        if(irq_pending) begin
+            if(cycle_tick) if(iflag_auto_ack) irq_pending <= 1'b0; 
+        end
+        else begin
+            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) irq_pending <= 1'b1;
+        end
+    end
+end
+
+//1st(RD4) cycle of the special hardi insturction
+reg             force_exec_hardi;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        force_exec_hardi <= 1'b0; 
+    end
+    else begin if(cycle_tick) begin
+        if(irq_detected && mc_end_of_instruction) force_exec_hardi <= 1'b1;
+        else force_exec_hardi <= 1'b0;
+    end end
+end
+    
+
+//interrupt enable(1), disable(0)
+always @(posedge emuclk) begin
+    if(!mrst_n) irq_enabled <= 1'b0; 
+    else begin if(cycle_tick) begin
+        if(hardi_proc_cyc) irq_enabled <= 1'b0;
+        else begin
+            if(mc_type == MCTYPE2 && mc_bk_irq_ctrl == 1'b1) irq_enabled <= ~reg_OPCODE[4];
+        end
+    end end
 end
 
 //interrupt routine address
 reg     [15:0]  irq_addr;
 wire    [15:0]  spurious_irq_addr;
 always @(*) begin
-    case(irq_lv)
-        3'b000: irq_addr = 16'h0060; //SOFTI
-        3'b001: irq_addr = 16'h0004; //NMI
-        3'b010: irq_addr = 16'h0018; //TIMER
-        3'b011: irq_addr = 16'h0010; //INT PIN
-        3'b100: irq_addr = 16'h0018; //COUNTER RELATED
-        3'b101: irq_addr = 16'h0020; //ADC
-        3'b110: irq_addr = 16'h0028; //SERIAL INTERFACE
-        3'b111: irq_addr = spurious_irq_addr; //not specified
-    endcase
+    if(softi_proc_cyc) irq_addr = 16'h0060; //SOFTI
+    else begin
+        case(irq_lv)
+            3'd7: irq_addr = 16'h0004; //NMI
+            3'd6: irq_addr = 16'h0008; //TIMER
+            3'd5: irq_addr = 16'h0010; //INT PIN
+            3'd4: irq_addr = 16'h0018; //COUNTER RELATED
+            3'd3: irq_addr = 16'h0020; //ADC
+            3'd2: irq_addr = 16'h0028; //SERIAL INTERFACE
+            3'd1: irq_addr = spurious_irq_addr; //no interrupt
+            3'd0: irq_addr = spurious_irq_addr; //no interrupt
+        endcase
+    end
 end
 
 //interrupt flag selector
@@ -834,7 +904,21 @@ reg     [15:0]  reg_TEMP;
 
 reg     [6:0]   reg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
 reg     [2:0]   reg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
-assign irq_mask_n = ~{reg_MKH, reg_MKL};
+assign irq_mask_n = ~{reg_MKH, reg_MKL, 1'b0};
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        reg_MKL <= 7'b1111110;
+        reg_MKH <= 3'b111;
+    end
+    /*
+    else begin
+        if(cycle_tick) begin
+            
+        end
+    end
+    */
+end
 
 
 //
@@ -928,8 +1012,11 @@ end
 always @(*) begin
     if(reg_PC_inc_stop) next_pc = reg_PC;
     else begin
-        if(current_bus_acc == RD4 || current_bus_acc == RD3) next_pc = reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
-        else next_pc = reg_PC;
+        if(force_exec_hardi) next_pc = reg_PC;
+        else begin
+            if(current_bus_acc == RD4 || current_bus_acc == RD3) next_pc = reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
+            else next_pc = reg_PC;
+        end
     end
 
     case(address_source_sel)
@@ -1052,7 +1139,7 @@ always @(posedge emuclk) begin
             end
 
             //Opcode register load
-            if(opcode_inlatch_tick) reg_OPCODE <= i_PD_I;
+            if(opcode_inlatch_tick) reg_OPCODE <= force_exec_hardi ? 8'h73 : i_PD_I;
         
             //Full opcode register for the disassembler
             if(cycle_tick) begin if(mc_end_of_instruction) reg_FULL_OPCODE_cntr <= 2'd0; end
@@ -1091,30 +1178,38 @@ always @(posedge emuclk) begin
     else begin
         if(mcuclk_pcen) begin
             if(cycle_tick) begin
-                if(mc_next_bus_acc != IDLE) begin
-                    ale_out <= 1'b1;
-                    pd_oe <= 1'b1;
+                if(mc_next_bus_acc == RD4 && irq_detected) begin
+                    ale_out <= 1'b0;
+                    pd_oe <= 1'b0;
+                end
+                else begin
+                    if(mc_next_bus_acc != IDLE) begin
+                        ale_out <= 1'b1;
+                        pd_oe <= 1'b1;
+                    end
                 end
             end
             else begin
-                //ALE off
-                if(timing_sr[1]) ale_out <= 1'b0;
+                if(!force_exec_hardi) begin
+                    //ALE off
+                    if(timing_sr[1]) ale_out <= 1'b0;
 
-                //PD data OE off
-                if(current_bus_acc == RD3 || current_bus_acc == RD4) begin
-                    if(timing_sr[2]) pd_oe <= 1'b0;
-                end
+                    //PD data OE off
+                    if(current_bus_acc == RD3 || current_bus_acc == RD4) begin
+                        if(timing_sr[2]) pd_oe <= 1'b0;
+                    end
 
-                //RD control
-                if(current_bus_acc == RD4) begin
-                    if(timing_sr[2]) rd_out <= 1'b1;
-                    else if(timing_sr[8]) rd_out <= 1'b0;
+                    //RD control
+                    if(current_bus_acc == RD4) begin
+                        if(timing_sr[2]) rd_out <= 1'b1;
+                        else if(timing_sr[8]) rd_out <= 1'b0;
+                    end
+                    else if(current_bus_acc == RD3) begin
+                        if(timing_sr[2]) rd_out <= 1'b1;
+                        else if(timing_sr[6]) rd_out <= 1'b0;
+                    end
+                    else rd_out <= 1'b0;
                 end
-                else if(current_bus_acc == RD3) begin
-                    if(timing_sr[2]) rd_out <= 1'b1;
-                    else if(timing_sr[6]) rd_out <= 1'b0;
-                end
-                else rd_out <= 1'b0;
 
                 //WR control
                 if(current_bus_acc == WR3) begin
@@ -1945,7 +2040,7 @@ end
 //At the end of the opcode/data fetch cycle, read the successive instruction 
 //by forcing the next_bus_acc as "RD4"
 always @(*) begin
-    if(|{flag_SK, flag_L1, flag_L0} && !(opcode_page == 3'd0 && (reg_OPCODE == 8'h72 || reg_OPCODE == 8'h73))) begin
+    if(|{flag_SK, flag_L1, flag_L0} && !(softi_proc_cyc | hardi_proc_cyc)) begin
         if(mc_jump_to_next_inst) mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
         else mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, mcrom_data[1:0]};
     end

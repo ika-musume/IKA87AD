@@ -54,11 +54,11 @@ IKA87AD u_dut (
 
     .i_PC_I                         (                           ),
     .o_PC_O                         (                           ),
-    .o_PC_DIR                       (                           ),
+    .o_PC_OE                        (                           ),
 
     .i_PD_I                         (cpu_dbus                   ),
     .o_PD_O                         (                           ),
-    .o_PD_DIR                       (                           ),
+    .o_PD_OE                        (                           ),
 
     .o_FULL_ADDRESS_DEBUG           (mem_addr                   ),
     .o_OUTPUT_DATA_DEBUG            (                           )

@@ -9,28 +9,27 @@ module IKA87AD (
     input   wire                i_RESET_n,
     input   wire                i_STOP_n,
 
-    //R/W control
+    //R/W control and output enables
     output  wire                o_ALE,
     output  wire                o_RD_n,
     output  wire                o_WR_n,
+    output  wire                o_ALE_OE,   //ALE output driver control(for CMOS variant, NMOS doesn't require this)
+    output  wire                o_RD_n_OE,  //RD_n output driver control
+    output  wire                o_WR_n_OE,  //WR_n output driver control
 
     //interrupt control
     input   wire                i_NMI_n,
     input   wire                i_INT1,
 
-    output  wire                test_IFLAG_NMI,
-    output  wire                test_IFLAG_TIMER0,
-    output  wire                test_IFLAG,
-
-    //port C I/O and DIRECTION
+    //port C I/O and output enables
     input   wire    [7:0]       i_PC_I,
     output  wire    [7:0]       o_PC_O,
-    output  wire    [7:0]       o_PC_DIR,
+    output  wire    [7:0]       o_PC_OE,
 
-    //port D I/O and DIRECTION
+    //port D I/O and output enables
     input   wire    [7:0]       i_PD_I,
     output  wire    [7:0]       o_PD_O,
-    output  wire    [7:0]       o_PD_DIR,
+    output  wire    [7:0]       o_PD_OE,
 
     output  wire    [15:0]      o_FULL_ADDRESS_DEBUG,
     output  wire    [7:0]       o_OUTPUT_DATA_DEBUG
@@ -89,7 +88,6 @@ wire            mc_jump_to_next_inst = mcrom_data[14];
 
 //bus control signals
 wire    [1:0]   mc_next_bus_acc = mc_ctrl_output[1:0];
-wire            mc_end_of_instruction = mc_next_bus_acc == RD4;
 
 //MICROCODE TYPE 0 FIELDS
 wire    [4:0]   mc_sb = mc_ctrl_output[13:9]; //microcode type 0, source b
@@ -114,17 +112,24 @@ wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
 wire            mc_s_cond_read   = mc_ctrl_output[7];
 wire    [2:0]   mc_s_bra_on_alu  = mc_ctrl_output[6:4];
 wire            mc_s_swap_md_out = mc_ctrl_output[3];
-wire            mc_s_save_sr_addr = mc_ctrl_output[2];
+wire            mc_s_ird         = mc_ctrl_output[2];
 
 //ALU FIELDS
 wire    [3:0]   arith_code = opcode_page == 3'd0 ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
 wire            is_arith_eval_op = arith_code > 4'h9; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE?
 wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]};
 
+//END OF INSTRUCTION
+wire            mc_end_of_instruction = mc_next_bus_acc == RD4 && !(mc_type == MCTYPE3 && mc_s_ird);
+
+
 
 ///////////////////////////////////////////////////////////
 //////  TIMING GENERATOR
 ////
+
+reg             soft_halt, soft_stop, hard_stop;
+wire            susp_detected = soft_halt | soft_stop;
 
 reg     [11:0]  timing_sr;
 reg     [1:0]   current_bus_acc;
@@ -153,6 +158,12 @@ always @(posedge emuclk) begin
                     timing_sr[0] <= timing_sr[11];
                     timing_sr[11:1] <= timing_sr[10:0];
                 end
+                else if(timing_sr[10]) begin
+                    if(!susp_detected) begin
+                        timing_sr[0] <= timing_sr[11];
+                        timing_sr[11:1] <= timing_sr[10:0];
+                    end
+                end
                 else begin
                     timing_sr[0] <= timing_sr[11];
                     timing_sr[11:1] <= timing_sr[10:0];
@@ -166,6 +177,12 @@ always @(posedge emuclk) begin
                     timing_sr[9] <= 1'b0;
                     timing_sr[11:10] <= timing_sr[10:9];
                 end
+                //else if(timing_sr[0]) begin
+                //    if(!susp_detected) begin
+                //        timing_sr[0] <= timing_sr[8];
+                //        timing_sr[11:1] <= timing_sr[10:0];
+                //    end
+                //end
                 else begin
                     timing_sr[0] <= timing_sr[8];
                     timing_sr[11:1] <= timing_sr[10:0];
@@ -174,6 +191,10 @@ always @(posedge emuclk) begin
         end
     end
 end
+
+
+
+
 
 
 
@@ -188,6 +209,7 @@ reg             irq_enabled;
 //interrupt sources(wire)
 wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
 wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is_CNTR0, is_nINT2, is_pINT1, is_TIMER1, is_TIMER0, is_NMI};
+
 
 
 //interrupt flags
@@ -220,7 +242,7 @@ wire            iflag_auto_ack = hardi_proc_cyc && mc_end_of_instruction;
 reg nmi = 1'b0;
 reg t0 = 1'b0;
 initial begin
-    #432 nmi = 1'b1; t0 = 1'b1;
+    #832 nmi = 1'b1; t0 = 1'b0;
     #10  nmi = 1'b0; t0 = 1'b0;
 
     //#200 t0 = 1'b1;
@@ -260,21 +282,7 @@ IKA87AD_iflag u_timer0      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, t0, irq_ma
 IKA87AD_iflag u_timer1      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[2], irq_mask_n[1], 5'd2, reg_OPCODE[4:0], 
                             &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[2]);
 
-
-
-
-
 //interrupt generation
-/*
-    possible edge case: when both IRQ sources in a certain group are not masked,
-    iflags will no be automatically acknowledged. A user should turn off these flags
-    manually. IRQ detection is conducted by checking IRQ level generated by iflags.
-    If all iflags are not reset, IRQ level will not change and IRQ with lower level
-    still remaining blocked until all iflags in current level are cleared. I think
-    almost all softwares disable interrupt while processing an interrupt routine
-    correspond to the current IRQ level. I should check the behavior of the chip by
-    allowing interrupt acceptance immediately after pushing PC and PSW into a stack.
-*/
 reg     [2:0]   irq_lv_z;
 reg             irq_pending;
 wire            irq_detected = irq_pending & irq_enabled;
@@ -308,7 +316,6 @@ always @(posedge emuclk) begin
     end end
 end
     
-
 //interrupt enable(1), disable(0)
 always @(posedge emuclk) begin
     if(!mrst_n) irq_enabled <= 1'b0; 
@@ -343,6 +350,76 @@ end
 reg             iflag_muxed;
 
 
+
+///////////////////////////////////////////////////////////
+//////  SUSPENSION CONTROL
+////
+
+
+//stop pin sync chain
+reg     [1:0]       stop_syncchain;
+always @(posedge emuclk) if(mcuclk_pcen) begin
+    stop_syncchain[0] <= ~i_STOP_n;
+    stop_syncchain[1] <= stop_syncchain[0];
+end
+
+//force exec nop
+reg             force_exec_nop;
+always @(posedge emuclk) begin
+    if(!mrst_n) force_exec_nop <= 1'b0;
+    else begin if(cycle_tick) begin
+        if(mc_end_of_instruction) force_exec_nop <= (mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B);
+    end end
+end
+
+//hardware stop mode release counter, counts up to 780,000
+reg     [19:0]      hstop_osc_wait;
+reg                 hstop_osc_unstable;
+always @(posedge emuclk) if(mcuclk_pcen) begin
+    if(stop_syncchain) begin
+        hstop_osc_unstable <= 1'b1;
+        hstop_osc_wait <= 20'd0;
+    end
+    else begin
+        if(hstop_osc_wait == 20'd780000) begin
+            hstop_osc_unstable <= 1'b0;
+        end
+        else begin
+            hstop_osc_wait <= hstop_osc_unstable + 20'd1;
+        end
+    end
+end
+
+//halt and stop, can be halt insturction without stopping chip's oscillator, this core will stop the timing generator
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        soft_halt <= 1'b0;
+        soft_stop <= 1'b0;
+        hard_stop <= 1'b0;
+    end
+    else begin
+        if(soft_halt) begin
+            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) soft_halt <= 1'b0;
+        end
+        else begin
+            if(cycle_tick) if(mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B) soft_halt <= 1'b1;
+        end
+        
+        if(soft_stop) begin
+            
+        end
+        else begin
+            if(cycle_tick) if(mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'hBB) soft_stop <= 1'b1;
+        end
+
+        if(hard_stop) begin
+
+        end
+        else begin
+            if(cycle_tick) if(mc_end_of_instruction) hard_stop <= stop_syncchain;
+        end
+    end
+end
 
 
 
@@ -386,7 +463,7 @@ always @(posedge emuclk) begin
     else begin
         if(mcrom_read_tick) begin
             if(mseq_state == RUNNING) begin
-                if(mc_end_of_instruction) begin
+                if(mc_next_bus_acc == RD4) begin
                     mseq_state <= WAIT_FOR_DECODING;
                     mseq_cntr <= mseq_cntr;
 
@@ -599,11 +676,12 @@ IKA87AD_microcode u_microcode (
 
 
     3. BOOKKEEPING OPERATION
-    10_X_X_-_-_-_X_X_XX_XX_XXX_XX
+    10_X_X_-_-_X_X_X_XX_XX_XXX_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:10]: reserved
+    D[13:11]: reserved
+    D[10]: save special register address
     D[9]: CARRY MOD
     D[8]: INTERRUPT E/D
     D[7:6]: EXCHANGE
@@ -638,7 +716,7 @@ IKA87AD_microcode u_microcode (
     D[7]: conditional read(rpa+byte or register)
     D[6:4]: conditional branch on ALU type, branch+ steps
     D[3]: swap MD output order
-    D[2]: save special register address
+    D[2]: 1st cycle of 2-byte instruction
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -1012,7 +1090,7 @@ end
 always @(*) begin
     if(reg_PC_inc_stop) next_pc = reg_PC;
     else begin
-        if(force_exec_hardi) next_pc = reg_PC;
+        if(force_exec_hardi | force_exec_nop) next_pc = reg_PC;
         else begin
             if(current_bus_acc == RD4 || current_bus_acc == RD3) next_pc = reg_PC == 16'hFFFF ? 16'h0000 : reg_PC + 16'h0001;
             else next_pc = reg_PC;
@@ -1139,12 +1217,16 @@ always @(posedge emuclk) begin
             end
 
             //Opcode register load
-            if(opcode_inlatch_tick) reg_OPCODE <= force_exec_hardi ? 8'h73 : i_PD_I;
+            if(opcode_inlatch_tick) begin
+                     if(force_exec_hardi) reg_OPCODE <= 8'h73;
+                else if(force_exec_nop)   reg_OPCODE <= 8'h00;
+                else                      reg_OPCODE <= i_PD_I;
+            end
         
             //Full opcode register for the disassembler
             if(cycle_tick) begin if(mc_end_of_instruction) reg_FULL_OPCODE_cntr <= 2'd0; end
             else if(full_opcode_inlatch_tick_debug) begin
-                reg_FULL_OPCODE_debug[reg_FULL_OPCODE_cntr] <= i_PD_I;
+                reg_FULL_OPCODE_debug[reg_FULL_OPCODE_cntr] <= force_exec_hardi ? 8'h73 : i_PD_I;
                 reg_FULL_OPCODE_cntr <= reg_FULL_OPCODE_cntr + 2'd1;
             end
         end
@@ -1178,7 +1260,7 @@ always @(posedge emuclk) begin
     else begin
         if(mcuclk_pcen) begin
             if(cycle_tick) begin
-                if(mc_next_bus_acc == RD4 && irq_detected) begin
+                if(mc_end_of_instruction && (irq_detected | (mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B))) begin
                     ale_out <= 1'b0;
                     pd_oe <= 1'b0;
                 end
@@ -1190,7 +1272,7 @@ always @(posedge emuclk) begin
                 end
             end
             else begin
-                if(!force_exec_hardi) begin
+                if(!(force_exec_hardi | force_exec_nop)) begin
                     //ALE off
                     if(timing_sr[1]) ale_out <= 1'b0;
 
@@ -2052,6 +2134,9 @@ always @(*) begin
         else mc_ctrl_output[1:0] = mcrom_data[1:0];
     end
 end
+
+
+
 
 
 

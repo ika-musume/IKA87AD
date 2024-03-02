@@ -37,3 +37,45 @@ always @(posedge i_EMUCLK) begin
 end
 
 endmodule
+
+module IKA87AD_irqsampler (
+    input   wire            i_MRST_n,
+    input   wire            i_EMUCLK,
+    input   wire            i_CNTTICK,
+
+    input   wire            i_IS,
+    output  reg             o_DET
+);
+
+reg     [5:0]   sample_tick_cntr;
+always @(i_EMUCLK) begin
+    if(!i_MRST_n) sample_tick_cntr <= 6'd0;
+    else begin if(i_CNTTICK) begin
+        sample_tick_cntr <= sample_tick_cntr == 6'd35 ? 6'd0 : sample_tick_cntr + 6'd1;
+    end end
+end
+
+reg     [2:0]   is_sr;
+always @(i_EMUCLK) begin
+    if(!i_MRST_n) is_sr <= 3'b000;
+    else begin if(sample_tick_cntr == 6'd35 && i_CNTTICK) begin
+        is_sr[0] <= i_IS;
+        is_sr[2:1] <= is_sr[1:0];
+    end end
+end
+
+reg             det, det_z;
+always @(i_EMUCLK) begin
+    if(!i_MRST_n) begin
+        det <= 1'b0; det_z <= 1'b0; o_DET <= 1'b0;
+    end
+    else begin if(i_CNTTICK) begin
+        det <= is_sr == 3'b111;
+        det_z <= det;
+
+        if({det, det_z} == 2'b10) o_DET <= 1'b1;
+        else o_DET <= 1'b0;
+    end end
+end
+
+endmodule

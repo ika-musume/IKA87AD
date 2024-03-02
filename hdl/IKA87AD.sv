@@ -1,6 +1,6 @@
 `timescale 10ps/10ps
 
-module IKA87AD (
+module IKA87AD(
     //clock
     input   wire                i_EMUCLK,
     input   wire                i_MCUCLK_PCEN,
@@ -9,17 +9,42 @@ module IKA87AD (
     input   wire                i_RESET_n,
     input   wire                i_STOP_n,
 
+    //M1/IO cycle output(mode0/1 open drain, negative logic output)
+    output  wire                o_M1_n,
+    output  wire                o_IO_n,
+
     //R/W control and output enables
     output  wire                o_ALE,
     output  wire                o_RD_n,
     output  wire                o_WR_n,
-    output  wire                o_ALE_OE,   //ALE output driver control(for CMOS variant, NMOS doesn't require this)
-    output  wire                o_RD_n_OE,  //RD_n output driver control
-    output  wire                o_WR_n_OE,  //WR_n output driver control
+    output  wire                o_ALE_OE,   //ALE output driver control(for a CMOS variant, an NMOS one doesn't require this)
+    output  wire                o_RD_n_OE,  //RD_n output driver control(")
+    output  wire                o_WR_n_OE,  //WR_n output driver control(")
+
+    //full address and data input/output port
+    output  wire    [15:0]      o_A,
+    input   wire    [7:0]       i_DI,
+    output  wire    [7:0]       o_DO,
+    output  wire                o_PD_DO_OE,
+    output  wire                o_DO_OE,
+
+    //memory structure config register
+    output  wire    [7:0]       o_MEMSTRUCT, //MM register
 
     //interrupt control
     input   wire                i_NMI_n,
     input   wire                i_INT1,
+    input   wire                i_INT2_n,
+
+    //port A I/O and output enables
+    input   wire    [7:0]       i_PA_I,
+    output  wire    [7:0]       o_PA_O,
+    output  wire    [7:0]       o_PA_OE, //bitwise direction control
+
+    //port B I/O and output enables
+    input   wire    [7:0]       i_PB_I,
+    output  wire    [7:0]       o_PB_O,
+    output  wire    [7:0]       o_PB_OE,
 
     //port C I/O and output enables
     input   wire    [7:0]       i_PC_I,
@@ -29,15 +54,19 @@ module IKA87AD (
     //port D I/O and output enables
     input   wire    [7:0]       i_PD_I,
     output  wire    [7:0]       o_PD_O,
-    output  wire    [7:0]       o_PD_OE,
+    output  wire                o_PD_OE, //can set only a bytewise direction
 
-    output  wire    [15:0]      o_FULL_ADDRESS_DEBUG,
-    output  wire    [7:0]       o_OUTPUT_DATA_DEBUG
+    //port F I/O and output enables
+    input   wire    [7:0]       i_PF_I,
+    output  wire    [7:0]       o_PF_O,
+    output  wire    [7:0]       o_PF_OE
 );
-
 
 //include mnemonic list
 `include "IKA87AD_mnemonics.sv"
+
+//hardware stop mode release wait time
+localparam HARD_STOP_RELEASE_WAIT = 20'd78;
 
 ///////////////////////////////////////////////////////////
 //////  CLOCK AND RESET
@@ -116,7 +145,7 @@ wire            mc_s_ird         = mc_ctrl_output[2];
 
 //ALU FIELDS
 wire    [3:0]   arith_code = opcode_page == 3'd0 ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
-wire            is_arith_eval_op = arith_code > 4'h9; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE?
+wire            is_arith_eval_op = arith_code > 4'h9 || arith_code == 4'h0; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE, or 0(move)?
 wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]};
 
 //END OF INSTRUCTION
@@ -128,8 +157,8 @@ wire            mc_end_of_instruction = mc_next_bus_acc == RD4 && !(mc_type == M
 //////  TIMING GENERATOR
 ////
 
-reg             soft_halt, soft_stop, hard_stop;
-wire            susp_detected = soft_halt | soft_stop;
+reg             soft_halt_flag, soft_stop_flag, hard_stop_flag;
+wire            sr_stop = soft_halt_flag | soft_stop_flag | hard_stop_flag;
 
 reg     [11:0]  timing_sr;
 reg     [1:0]   current_bus_acc;
@@ -137,7 +166,6 @@ reg     [1:0]   current_bus_acc;
 wire    opcode_tick = timing_sr[11] & current_bus_acc == RD4 & mcuclk_pcen;
 wire    rw_tick = timing_sr[8] & current_bus_acc != RD4 & mcuclk_pcen;
 wire    cycle_tick = opcode_tick | rw_tick;
-wire    div3_tick = |{timing_sr[2], timing_sr[5], timing_sr[8], timing_sr[11]};
 
 assign  mcrom_read_tick = (timing_sr[8] | timing_sr[11]) & mcuclk_pcen;
 
@@ -159,7 +187,7 @@ always @(posedge emuclk) begin
                     timing_sr[11:1] <= timing_sr[10:0];
                 end
                 else if(timing_sr[10]) begin
-                    if(!susp_detected) begin
+                    if(!sr_stop) begin
                         timing_sr[0] <= timing_sr[11];
                         timing_sr[11:1] <= timing_sr[10:0];
                     end
@@ -177,12 +205,6 @@ always @(posedge emuclk) begin
                     timing_sr[9] <= 1'b0;
                     timing_sr[11:10] <= timing_sr[10:9];
                 end
-                //else if(timing_sr[0]) begin
-                //    if(!susp_detected) begin
-                //        timing_sr[0] <= timing_sr[8];
-                //        timing_sr[11:1] <= timing_sr[10:0];
-                //    end
-                //end
                 else begin
                     timing_sr[0] <= timing_sr[8];
                     timing_sr[11:1] <= timing_sr[10:0];
@@ -191,10 +213,6 @@ always @(posedge emuclk) begin
         end
     end
 end
-
-
-
-
 
 
 
@@ -210,7 +228,19 @@ reg             irq_enabled;
 wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
 wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is_CNTR0, is_nINT2, is_pINT1, is_TIMER1, is_TIMER0, is_NMI};
 
+assign is_TIMER0 = 1'b0;
+assign is_TIMER1 = 1'b0;
+assign is_CNTR0 = 1'b0;
+assign is_CNTR1 = 1'b0;
+assign is_nCNTRCIN = 1'b0;
+assign is_ADC = 1'b0;
+assign is_BUFFULL = 1'b0;
+assign is_BUFEMPTY = 1'b0;
 
+//interrupt sampler, note that interrupt sampler uses an independent divided clock
+IKA87AD_iflag u_nmi_sampler   (mrst_n, emuclk, mcuclk_pcen, ~i_NMI_n, is_NMI);
+IKA87AD_iflag u_pint1_sampler (mrst_n, emuclk, mcuclk_pcen, i_INT1, is_pINT1);
+IKA87AD_iflag u_nint2_sampler (mrst_n, emuclk, mcuclk_pcen, ~i_INT2_n, is_nINT2);
 
 //interrupt flags
 wire    [10:0]  iflag; assign iflag[10:2] = 10'd0;
@@ -238,17 +268,6 @@ wire            iflag_manual_ack = mc_type == MCTYPE2 && mc_bk_skip_ctrl[2:1] ==
 //An iflag is acknowledged when the HARDI instruction starts
 wire            iflag_auto_ack = hardi_proc_cyc && mc_end_of_instruction;
 
-//test
-reg nmi = 1'b0;
-reg t0 = 1'b0;
-initial begin
-    #832 nmi = 1'b1; t0 = 1'b0;
-    #10  nmi = 1'b0; t0 = 1'b0;
-
-    //#200 t0 = 1'b1;
-    //#10 t0 = 1'b0;
-end
-
 //interrupt priority
 wire    [5:0]   masked_irq =   { iflag[0] & irq_mask_n[0],
                                 (iflag[1] & irq_mask_n[1]) | (iflag[2] & irq_mask_n[2]),
@@ -271,16 +290,21 @@ always @(*) begin
     endcase
 end
 
-//note that interrupt sampler uses an independent divided clock
 //NMI interrupt flag set/reset
-IKA87AD_iflag u_nmi         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, nmi, 1'b1, 5'd0, reg_OPCODE[4:0], 
+IKA87AD_iflag u_nmi         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[0], 1'b1, 5'd0, reg_OPCODE[4:0], 
                             1'b0, 1'b0, iflag_auto_ack && irq_lv == 3'd7, iflag[0]);
 
 //Timer0/1 interrupt flag set/reset
-IKA87AD_iflag u_timer0      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, t0, irq_mask_n[0], 5'd1, reg_OPCODE[4:0], 
+IKA87AD_iflag u_timer0      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[1], irq_mask_n[1], 5'd1, reg_OPCODE[4:0], 
                             &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[1]);
-IKA87AD_iflag u_timer1      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[2], irq_mask_n[1], 5'd2, reg_OPCODE[4:0], 
+IKA87AD_iflag u_timer1      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[2], irq_mask_n[2], 5'd2, reg_OPCODE[4:0], 
                             &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[2]);
+
+//Pin interrupt flag set/reset
+IKA87AD_iflag u_int1        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[3], irq_mask_n[3], 5'd1, reg_OPCODE[4:0], 
+                            &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[3]);
+IKA87AD_iflag u_int2        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[4], irq_mask_n[4], 5'd2, reg_OPCODE[4:0], 
+                            &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[4]);
 
 //interrupt generation
 reg     [2:0]   irq_lv_z;
@@ -355,7 +379,6 @@ reg             iflag_muxed;
 //////  SUSPENSION CONTROL
 ////
 
-
 //stop pin sync chain
 reg     [1:0]       stop_syncchain;
 always @(posedge emuclk) if(mcuclk_pcen) begin
@@ -363,29 +386,52 @@ always @(posedge emuclk) if(mcuclk_pcen) begin
     stop_syncchain[1] <= stop_syncchain[0];
 end
 
+//halt/stop detection
+wire                soft_halt_detected = mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B;
+wire                soft_stop_detected = mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'hBB;
+wire                hard_stop_detected = mc_end_of_instruction && stop_syncchain[1];
+wire                susp_detected = soft_halt_detected | soft_stop_detected | hard_stop_detected;
+
 //force exec nop
 reg             force_exec_nop;
 always @(posedge emuclk) begin
     if(!mrst_n) force_exec_nop <= 1'b0;
     else begin if(cycle_tick) begin
-        if(mc_end_of_instruction) force_exec_nop <= (mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B);
+        if(mc_end_of_instruction) force_exec_nop <= susp_detected;
     end end
 end
 
 //hardware stop mode release counter, counts up to 780,000
 reg     [19:0]      hstop_osc_wait;
-reg                 hstop_osc_unstable;
-always @(posedge emuclk) if(mcuclk_pcen) begin
-    if(stop_syncchain) begin
-        hstop_osc_unstable <= 1'b1;
-        hstop_osc_wait <= 20'd0;
+reg                 hstop_osc_unstable, hstop_osc_unstable_z;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        hstop_osc_unstable <= 1'b0;
+        hstop_osc_unstable_z <= 1'b0;
     end
     else begin
-        if(hstop_osc_wait == 20'd780000) begin
-            hstop_osc_unstable <= 1'b0;
+        if(mcuclk_pcen) begin
+            hstop_osc_unstable_z <= hstop_osc_unstable;
+
+            if(stop_syncchain) begin
+                hstop_osc_unstable <= 1'b1;
+            end
+            else begin
+                if(hstop_osc_wait == HARD_STOP_RELEASE_WAIT) begin
+                    hstop_osc_unstable <= 1'b0;
+                end
+            end
+        end
+    end
+
+    if(mcuclk_pcen) begin
+        if(stop_syncchain) begin
+            hstop_osc_wait <= 20'd0;
         end
         else begin
-            hstop_osc_wait <= hstop_osc_unstable + 20'd1;
+            if(hstop_osc_wait != HARD_STOP_RELEASE_WAIT) begin
+                hstop_osc_wait <= hstop_osc_wait + 20'd1;
+            end
         end
     end
 end
@@ -393,30 +439,32 @@ end
 //halt and stop, can be halt insturction without stopping chip's oscillator, this core will stop the timing generator
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        soft_halt <= 1'b0;
-        soft_stop <= 1'b0;
-        hard_stop <= 1'b0;
+        soft_halt_flag <= 1'b0;
+        soft_stop_flag <= 1'b0;
+        hard_stop_flag <= 1'b0;
     end
     else begin
-        if(soft_halt) begin
-            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) soft_halt <= 1'b0;
+        if(soft_halt_flag) begin
+            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) soft_halt_flag <= 1'b0;
         end
         else begin
-            if(cycle_tick) if(mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B) soft_halt <= 1'b1;
+            if(cycle_tick) if(soft_halt_detected) soft_halt_flag <= 1'b1;
         end
         
-        if(soft_stop) begin
+        if(soft_stop_flag) begin
             
         end
         else begin
-            if(cycle_tick) if(mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'hBB) soft_stop <= 1'b1;
+            if(cycle_tick) if(soft_stop_detected) soft_stop_flag <= 1'b1;
         end
 
-        if(hard_stop) begin
-
+        //According to the datasheet on page 178, if RST is asserted before the oscillator has stabilized,
+        //the CPU core will start the program from 0x0000 without waiting for stabilization. I emulated that.
+        if(hard_stop_flag) begin
+            if(mcuclk_pcen) hard_stop_flag <= hstop_osc_unstable == 1'b1;
         end
         else begin
-            if(cycle_tick) if(mc_end_of_instruction) hard_stop <= stop_syncchain;
+            if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_syncchain;
         end
     end
 end
@@ -680,8 +728,7 @@ IKA87AD_microcode u_microcode (
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:11]: reserved
-    D[10]: save special register address
+    D[13:10]: reserved
     D[9]: CARRY MOD
     D[8]: INTERRUPT E/D
     D[7:6]: EXCHANGE
@@ -887,7 +934,7 @@ wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
 
 /*
     TODO
-    인터럽트 샘플링 시 RD4 3사이클(12 x mcupcen = 800ns)동안 신호가 유지되어야함, 2 x mcupcen동안 뭔가 시프트
+    인터럽트 샘플링 시 RD4 3사이클(36 x mcupcen)동안 신호가 유지되어야함, 2 x mcupcen동안 뭔가 시프트
 */
 
 //
@@ -974,29 +1021,6 @@ wire    [7:0]   reg_L = regpair_L[sel_HL];
 reg     [15:0]  reg_MDI; //Memory Data input spare
 reg     [7:0]   reg_MDH, reg_MDL; //byte [15:8], word[15:0]
 reg     [15:0]  reg_TEMP;
-
-
-//
-//  Special registers
-//
-
-reg     [6:0]   reg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
-reg     [2:0]   reg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
-assign irq_mask_n = ~{reg_MKH, reg_MKL, 1'b0};
-
-always @(posedge emuclk) begin
-    if(!mrst_n) begin
-        reg_MKL <= 7'b1111110;
-        reg_MKH <= 3'b111;
-    end
-    /*
-    else begin
-        if(cycle_tick) begin
-            
-        end
-    end
-    */
-end
 
 
 //
@@ -1105,6 +1129,93 @@ end
 
 
 
+///////////////////////////////////////////////////////////
+//////  SPECIAL REGISTERS
+////
+
+/*
+    SPECIAL REGISTER LIST
+
+    rw 0x00 PA - port A rw data
+    rw 0x01 PB - port B rw data
+    rw 0x02 PC - port C rw data
+    rw 0x03 PD - port D rw data
+    rw 0x05 PF - port F rw data
+     w 0x06 MKH - Mask High(D[7:1])
+     w 0x07 MKL - Mask Low(D[1:0])
+    rw 0x08 ANM - ADC Mode(D[4:0], 0x00 after reset)
+    rw 0x09 SMH - Serial Mode High(0x00 after reset)
+     w 0x0A SML - Serial Mode Low(0x48 after reset)
+    rw 0x0B EOM - Timer/event counter output mode
+     w 0x0C ETMM - Timer/event counter mode
+    rw 0x0D TMM - Timer mode
+     w 0x10 MM - Memory mapping(piggyback model only)
+     w 0x11 MCC - Mode control C register
+     w 0x12 MA - port A direction
+     w 0x13 MB - port B direction
+     w 0x14 MC - port C direction
+     w 0x17 MF - port F direction
+     w 0x18 TXB - tx buffer
+    r  0x19 RXB - rx buffer
+     w 0x1A TM0 - timer A register
+     w 0x1B TM1 - timer B register
+    r  0x20 CR0 - conversion result 0
+    r  0x21 CR1 - conversion result 1
+    r  0x22 CR2 - conversion result 2
+    r  0x23 CR3 - conversion result 3
+     w 0x28 ZCM - zero crossing detector mode
+    
+    <----register here can't be accessed by sr/sr1/sr2 fields---->
+     w 0x30 ETM0 - event counter register 0
+     w 0x31 ETM1 - event counter register 1
+    r  0x32 ECNT - event counter
+    r  0x33 ECPT - event counter capture register
+*/
+
+//special register address
+reg     [5:0]   sr_wr_addr, sr_rd_addr;
+always @(*) begin
+         if(mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SR_SR1) sr_wr_addr = reg_MDI[5:0];
+    else if(mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SR2)    sr_wr_addr = {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
+    else if(mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SR3)    sr_wr_addr = {5'b11000, reg_OPCODE[0]};
+    else   sr_wr_addr = 6'h3F;
+
+         if(mc_type == MCTYPE0 && mc_sb == SB_SR_SR1)         sr_rd_addr = reg_MDI[5:0];
+    else if(mc_type == MCTYPE0 && mc_sb == SB_SR2)            sr_rd_addr = {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
+    else if(mc_type == MCTYPE0 && mc_sb == SB_SR4)            sr_rd_addr = {5'b11001, reg_OPCODE[0]};
+    else   sr_rd_addr = 6'h3F;
+end
+
+//port related register
+reg     [7:0]   sreg_PAO, sreg_PBO, sreg_PCO, sreg_PDO, sreg_PFO; //undefined after reset
+reg     [7:0]   sreg_MA, sreg_MB, sreg_MC, sreg_MF, sreg_MM, sreg_MCC;
+
+reg     [6:0]   sreg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
+reg     [2:0]   sreg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
+assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b1};
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        sreg_PAO <= 8'h00; sreg_PBO <= 8'h00; sreg_PCO <= 8'h00; sreg_PDO <= 8'h00; sreg_PFO <= 8'h00;
+        sreg_MA  <= 8'hFF; sreg_MB  <= 8'hFF; sreg_MC  <= 8'hFF; sreg_MM  <= 8'h00; sreg_MF  <= 8'hFF;
+        sreg_MCC <= 8'h00;
+
+
+        sreg_MKL <= 7'b1111110;
+        sreg_MKH <= 3'b111;
+    end
+    else begin if(cycle_tick) begin
+        case(sr_wr_addr) 
+            6'h00: sreg_PAO <= alu_output[7:0];
+            6'h01: sreg_PBO <= alu_output[7:0];
+            6'h02: sreg_PCO <= alu_output[7:0];
+            6'h03: sreg_PDO <= alu_output[7:0];
+            6'h05: sreg_PFO <= alu_output[7:0];
+            
+        endcase 
+    end end
+end
+
 
 
 ///////////////////////////////////////////////////////////
@@ -1204,15 +1315,15 @@ always @(posedge emuclk) begin
             end
             else if(md_inlatch_tick) begin
                 if(md_dirty) begin
-                    if(md_in_byte_sel) reg_MDI[15:8] <= i_PD_I;
-                    else reg_MDI[7:0] <= i_PD_I;
+                    if(md_in_byte_sel) reg_MDI[15:8] <= i_DI;
+                    else reg_MDI[7:0] <= i_DI;
                 end
                 else begin
-                    if(md_in_byte_sel) reg_MDI[15:8] <= i_PD_I;
-                    else reg_MDI[7:0] <= i_PD_I;
+                    if(md_in_byte_sel) reg_MDI[15:8] <= i_DI;
+                    else reg_MDI[7:0] <= i_DI;
 
-                    if(md_in_byte_sel) reg_MDH <= i_PD_I;
-                    else reg_MDL <= i_PD_I;
+                    if(md_in_byte_sel) reg_MDH <= i_DI;
+                    else reg_MDL <= i_DI;
                 end
             end
 
@@ -1220,13 +1331,13 @@ always @(posedge emuclk) begin
             if(opcode_inlatch_tick) begin
                      if(force_exec_hardi) reg_OPCODE <= 8'h73;
                 else if(force_exec_nop)   reg_OPCODE <= 8'h00;
-                else                      reg_OPCODE <= i_PD_I;
+                else                      reg_OPCODE <= i_DI;
             end
         
             //Full opcode register for the disassembler
             if(cycle_tick) begin if(mc_end_of_instruction) reg_FULL_OPCODE_cntr <= 2'd0; end
             else if(full_opcode_inlatch_tick_debug) begin
-                reg_FULL_OPCODE_debug[reg_FULL_OPCODE_cntr] <= force_exec_hardi ? 8'h73 : i_PD_I;
+                reg_FULL_OPCODE_debug[reg_FULL_OPCODE_cntr] <= force_exec_hardi ? 8'h73 : i_DI;
                 reg_FULL_OPCODE_cntr <= reg_FULL_OPCODE_cntr + 2'd1;
             end
         end
@@ -1239,35 +1350,45 @@ wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MDH : reg_MDL;
 wire    [7:0]   addr_hi_out = memory_access_address[15:8];
 wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
 
-//FOR DEBUGGING
-assign  o_FULL_ADDRESS_DEBUG = memory_access_address;
-assign  o_OUTPUT_DATA_DEBUG = md_out_byte_data;
+//address/data output
+assign  o_A = memory_access_address;
+assign  o_DO = md_out_byte_data;
 
 
 //ALE, /RD, /WR
-reg             ale_out, rd_out, wr_out, pd_oe;
+reg             ale_out, rd_out, wr_out, pd_do_oe, do_oe, m1, io;
 assign o_ALE = ale_out;
 assign o_RD_n = ~rd_out;
 assign o_WR_n = ~wr_out;
+assign o_PD_DO_OE = pd_do_oe;
+assign o_DO_OE = do_oe;
+assign o_M1_n = ~m1;
+assign o_IO_n = ~io;
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         ale_out <= 1'b0;
         rd_out <= 1'b0;
         wr_out <= 1'b0;
-        pd_oe <= 1'b0;
+        pd_do_oe <= 1'b0;
+        do_oe <= 1'b0;
+        m1 <= 1'b0;
+        io <= 1'b0;
     end
     else begin
         if(mcuclk_pcen) begin
             if(cycle_tick) begin
-                if(mc_end_of_instruction && (irq_detected | (mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B))) begin
+                if(mc_end_of_instruction && (irq_detected | susp_detected)) begin
                     ale_out <= 1'b0;
-                    pd_oe <= 1'b0;
+                    pd_do_oe <= 1'b0;
                 end
                 else begin
                     if(mc_next_bus_acc != IDLE) begin
                         ale_out <= 1'b1;
-                        pd_oe <= 1'b1;
+                        pd_do_oe <= 1'b1;
+                        
+                        if(mc_end_of_instruction && mc_next_bus_acc == RD4) m1 <= 1'b1;
+                        if(mc_next_bus_acc == RD3 || mc_next_bus_acc == WR3) io <= 1'b1;
                     end
                 end
             end
@@ -1278,7 +1399,7 @@ always @(posedge emuclk) begin
 
                     //PD data OE off
                     if(current_bus_acc == RD3 || current_bus_acc == RD4) begin
-                        if(timing_sr[2]) pd_oe <= 1'b0;
+                        if(timing_sr[2]) pd_do_oe <= 1'b0;
                     end
 
                     //RD control
@@ -1291,12 +1412,21 @@ always @(posedge emuclk) begin
                         else if(timing_sr[6]) rd_out <= 1'b0;
                     end
                     else rd_out <= 1'b0;
+
+                    //M1/IO control
+                    if(timing_sr[2]) m1 <= 1'b0;
+                    if(timing_sr[2]) io <= 1'b0;
                 end
 
                 //WR control
                 if(current_bus_acc == WR3) begin
-                    if(timing_sr[2]) wr_out <= 1'b1;
+                    if(timing_sr[2]) begin
+                        wr_out <= 1'b1;
+                        do_oe <= 1'b1;
+                        io <= 1'b0;
+                    end
                     else if(timing_sr[6]) wr_out <= 1'b0;
+                    else if(timing_sr[8]) do_oe <= 1'b0;
                 end
                 else wr_out <= 1'b0;
             end
@@ -2137,12 +2267,23 @@ end
 
 
 
-
-
-
 ///////////////////////////////////////////////////////////
 //////  I/O PORTS
 ////
+
+//port output enables
+assign o_PA_OE = ~sreg_MA;
+assign o_PB_OE = ~sreg_MB;
+assign o_PC_OE = ~sreg_MC;
+assign o_PD_OE = sreg_MM[0];
+assign o_PF_OE = ~sreg_MF;
+
+//port data
+assign o_PA_O = sreg_PAO;
+assign o_PB_O = sreg_PBO;
+assign o_PC_O = sreg_PCO;
+assign o_PD_O = sreg_PDO;
+assign o_PF_O = sreg_PFO;
 
 
 

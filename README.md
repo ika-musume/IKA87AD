@@ -6,7 +6,7 @@ NEC uCOM87AD microcontroller Verilog core for FPGA implementation. It was create
 * Emulates the CMOS version of the CPU.
 
 ## Module instantiation
-The steps below show how to instantiate the IKAOPM module in Verilog:
+The steps below show how to instantiate the IKA87AD module in Verilog:
 
 1. Download this repository or add it as a submodule to your project.
 2. You can use the Verilog snippet below to instantiate the module.

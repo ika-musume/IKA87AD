@@ -1,5 +1,3 @@
-`timescale 10ps/10ps
-
 module IKA87AD(
     //clock
     input   wire                i_EMUCLK,
@@ -238,12 +236,13 @@ assign is_BUFFULL = 1'b0;
 assign is_BUFEMPTY = 1'b0;
 
 //interrupt sampler, note that interrupt sampler uses an independent divided clock
-IKA87AD_iflag u_nmi_sampler   (mrst_n, emuclk, mcuclk_pcen, ~i_NMI_n, is_NMI);
-IKA87AD_iflag u_pint1_sampler (mrst_n, emuclk, mcuclk_pcen, i_INT1, is_pINT1);
-IKA87AD_iflag u_nint2_sampler (mrst_n, emuclk, mcuclk_pcen, ~i_INT2_n, is_nINT2);
+IKA87AD_irqsampler u_nmi_sampler   (mrst_n, emuclk, mcuclk_pcen, ~i_NMI_n, is_NMI);
+IKA87AD_irqsampler u_pint1_sampler (mrst_n, emuclk, mcuclk_pcen, i_INT1, is_pINT1);
+IKA87AD_irqsampler u_nint2_sampler (mrst_n, emuclk, mcuclk_pcen, ~i_INT2_n, is_nINT2);
 
 //interrupt flags
-wire    [10:0]  iflag; assign iflag[10:2] = 10'd0;
+wire    [10:0]  iflag; 
+assign iflag[10:5] = 6'd0;
 /*
 wire            iflag_NMI       = iflag[0]; //nNMI physical pin input, takes maximum 10us to suppress glitch
 wire            iflag_TIMER0    = iflag[1]; //timer 0/1 match interrupt
@@ -301,15 +300,15 @@ IKA87AD_iflag u_timer1      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[2], irq
                             &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[2]);
 
 //Pin interrupt flag set/reset
-IKA87AD_iflag u_int1        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[3], irq_mask_n[3], 5'd1, reg_OPCODE[4:0], 
+IKA87AD_iflag u_int1        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[3], irq_mask_n[3], 5'd3, reg_OPCODE[4:0], 
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[3]);
-IKA87AD_iflag u_int2        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[4], irq_mask_n[4], 5'd2, reg_OPCODE[4:0], 
+IKA87AD_iflag u_int2        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[4], irq_mask_n[4], 5'd4, reg_OPCODE[4:0], 
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[4]);
 
 //interrupt generation
 reg     [2:0]   irq_lv_z;
 reg             irq_pending;
-wire            irq_detected = irq_pending & irq_enabled;
+wire            irq_detected = (irq_pending & irq_lv < 3'd7 & irq_enabled) | (irq_pending & irq_lv == 3'd7);
 always @(posedge emuclk) if(mcuclk_pcen) begin
     irq_lv_z <= irq_lv;
 end
@@ -320,7 +319,7 @@ always @(posedge emuclk) begin
     end
     else begin
         if(irq_pending) begin
-            if(cycle_tick) if(iflag_auto_ack) irq_pending <= 1'b0; 
+            if(mcuclk_pcen) if(iflag_auto_ack) irq_pending <= 1'b0; 
         end
         else begin
             if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) irq_pending <= 1'b1;
@@ -371,7 +370,29 @@ always @(*) begin
 end
 
 //interrupt flag selector
+reg             nmi_n_z;
+always @(posedge emuclk) if(mcuclk_pcen) begin
+    nmi_n_z <= i_NMI_n;
+end
+
 reg             iflag_muxed;
+always @(*) begin
+    case(reg_OPCODE[4:0])
+        5'h0: iflag_muxed = nmi_n_z;
+        5'h1: iflag_muxed = iflag[1];
+        5'h2: iflag_muxed = iflag[2];
+        5'h3: iflag_muxed = iflag[3];
+        5'h4: iflag_muxed = iflag[4];
+        5'h5: iflag_muxed = iflag[5];
+        5'h6: iflag_muxed = iflag[6];
+        5'h7: iflag_muxed = iflag[7];
+        5'h8: iflag_muxed = iflag[8];
+        5'h9: iflag_muxed = iflag[9];
+        5'hA: iflag_muxed = iflag[10];
+        default: iflag_muxed = 1'b0;
+    endcase
+end
+
 
 
 
@@ -1192,7 +1213,7 @@ reg     [7:0]   sreg_MA, sreg_MB, sreg_MC, sreg_MF, sreg_MM, sreg_MCC;
 
 reg     [6:0]   sreg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
 reg     [2:0]   sreg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
-assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b1};
+assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b0};
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
@@ -1201,7 +1222,7 @@ always @(posedge emuclk) begin
         sreg_MCC <= 8'h00;
 
 
-        sreg_MKL <= 7'b1111110;
+        sreg_MKL <= 7'b1110000;
         sreg_MKH <= 3'b111;
     end
     else begin if(cycle_tick) begin
@@ -1387,7 +1408,8 @@ always @(posedge emuclk) begin
                         ale_out <= 1'b1;
                         pd_do_oe <= 1'b1;
                         
-                        if(mc_end_of_instruction && mc_next_bus_acc == RD4) m1 <= 1'b1;
+                        if(mc_next_bus_acc == RD4) m1 <= 1'b1;
+                        //if(mc_end_of_instruction && mc_next_bus_acc == RD4) m1 <= 1'b1;
                         if(mc_next_bus_acc == RD3 || mc_next_bus_acc == WR3) io <= 1'b1;
                     end
                 end

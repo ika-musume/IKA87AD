@@ -5,6 +5,9 @@ module IKA87AD_tb;
 reg             EMUCLK = 1'b1;
 reg             RST_n = 1'b1;
 reg             STOP_n = 1'b1;
+reg             NMI_n = 1'b1;
+reg             INT1 = 1'b0;
+reg             INT2_n = 1'b1;
 
 //generate clock
 always #1 EMUCLK = ~EMUCLK;
@@ -16,17 +19,13 @@ end
 
 //reset
 initial begin
-    #30  RST_n = 1'b0;
-    #130 RST_n = 1'b1;
-
-    #600 RST_n = 1'b0;
-    #130 RST_n = 1'b1;
+    #10  RST_n = 1'b0;
+    #110 RST_n = 1'b1;
 end
 
 
 reg     [7:0]   mem[0:511];
 wire    [15:0]  mem_addr;
-
 
 wire            cpu_rd_n, cpu_wr_n;
 wire    [7:0]   cpu_do;
@@ -59,6 +58,9 @@ IKA87AD u_dut (
     .i_RESET_n                      (RST_n                      ),
     .i_STOP_n                       (STOP_n                     ),
 
+    .o_M1_n                         (                           ),
+    .o_IO_n                         (                           ),
+
     .o_ALE                          (                           ),
     .o_RD_n                         (cpu_rd_n                   ),
     .o_WR_n                         (cpu_wr_n                   ),
@@ -74,8 +76,9 @@ IKA87AD u_dut (
 
     .o_MEMSTRUCT                    (                           ),
 
-    .i_NMI_n                        (                           ),
-    .i_INT1                         (                           ),
+    .i_NMI_n                        (NMI_n                      ),
+    .i_INT1                         (INT1                       ),
+    .i_INT2_n                       (INT2_n                     ),
 
     .i_PA_I                         (                           ),
     .o_PA_O                         (                           ),
@@ -100,8 +103,10 @@ IKA87AD u_dut (
 
 
 initial begin
-    #350 STOP_n = 1'b0;
-    #400 STOP_n = 1'b1;
+    #350 NMI_n = 1'b0;
+    #400 NMI_n = 1'b1;
+    #800 INT1 = 1'b1; INT2_n = 1'b0;
+    #400 INT1 = 1'b0; INT2_n = 1'b1;
 end
 
 

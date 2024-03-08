@@ -148,7 +148,7 @@ wire            mc_s_ird         = mc_ctrl_output[2];
 
 //ALU FIELDS
 wire    [3:0]   arith_code = opcode_page == 3'd0 ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
-wire            is_arith_eval_op = arith_code > 4'h9 || arith_code == 4'h0; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE, or 0(move)?
+wire            is_arith_eval_op = arith_code > 4'h9; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE?
 wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]};
 
 //END OF INSTRUCTION
@@ -570,7 +570,7 @@ always @(*) begin
         else mseq_cntr_next = mseq_cntr;
     end
     else if(mc_type == MCTYPE3 && mc_s_bra_on_alu != 3'd0 ) begin
-        if(is_arith_eval_op) mseq_cntr_next = mseq_cntr + mc_s_bra_on_alu + 3'd1;
+        if(is_arith_eval_op || arith_code == 4'h0) mseq_cntr_next = mseq_cntr + mc_s_bra_on_alu + 3'd1; //eval op + 00(move)
         else mseq_cntr_next = mseq_cntr + 3'd1;
     end
     else begin
@@ -1098,7 +1098,7 @@ always @(posedge emuclk) begin
     //REGISTERS
     if(!mrst_n) begin
         reg_PC <= 16'hFFFF;
-        reg_SP <= 16'h0000;
+        reg_SP <= 16'hXXXX; //undefined after reset
         reg_MA <= 16'h0000;
         reg_TEMP <= 16'h0000;
     end
@@ -1255,8 +1255,8 @@ always @(posedge emuclk) begin
             6'h02: sreg_PCO <= alu_output[7:0];
             6'h03: sreg_PDO <= alu_output[7:0];
             6'h05: sreg_PFO <= alu_output[7:0];
-            6'h06: sreg_MKL <= alu_output[7:1];
-            6'h07: sreg_MKH <= alu_output[2:0];
+            6'h06: sreg_MKH <= alu_output[2:0];
+            6'h07: sreg_MKL <= alu_output[7:1];
             6'h08: sreg_ANM <= alu_output[4:0];
             6'h09: sreg_SMH <= alu_output[7:0];
             6'h0A: sreg_SML <= alu_output[7:0];
@@ -2057,7 +2057,10 @@ always @(*) begin
     z_comb = flag_Z;
 
     if(mc_type == MCTYPE0) begin
-        if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00;
+        if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
+            if(is_arith_eval_op) z_comb = data_w_nb ? alu_temp_output == 16'h0000 : alu_temp_output[7:0] == 8'h00;
+            else                 z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00;
+        end
     end
     else if(mc_type == MCTYPE1) begin
              if(mc_t1_alusel == 4'h2) z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00; //DAA
@@ -2422,11 +2425,11 @@ always @(posedge emuclk) begin
         if(adc_state_cntr == 8'd0) adc_strobe_n <= 1'b0;
         else if(adc_state_cntr == 8'd127) begin
             adc_strobe_n <= current_adc_mode[4];
-            sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
+            if(current_adc_mode[0]) sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
         end
         else if(adc_state_cntr == 8'd175) begin
             adc_strobe_n <= ~current_adc_mode[4];
-            sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
+            if(~current_adc_mode[0]) sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
         end
     end end
 end

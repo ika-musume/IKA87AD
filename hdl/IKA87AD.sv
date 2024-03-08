@@ -27,7 +27,7 @@ module IKA87AD(
     output  wire                o_DO_OE,
 
     //memory structure config register
-    output  wire    [7:0]       o_MEMSTRUCT, //MM register
+    output  wire    [7:0]       o_REG_MM, //MM register
 
     //interrupt control
     input   wire                i_NMI_n,
@@ -57,7 +57,12 @@ module IKA87AD(
     //port F I/O and output enables
     input   wire    [7:0]       i_PF_I,
     output  wire    [7:0]       o_PF_O,
-    output  wire    [7:0]       o_PF_OE
+    output  wire    [7:0]       o_PF_OE,
+
+    //ADC interface
+    output  wire    [2:0]       o_ADC_CH, //adc channel select, from 0 to 7
+    input   wire    [7:0]       i_ADC_DATA, //adc data input
+    output  wire                o_ADC_RD_n  //conversion data read strobe
 );
 
 //include mnemonic list
@@ -953,11 +958,6 @@ wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
 //////  REGISTER FILE
 ////
 
-/*
-    TODO
-    인터럽트 샘플링 시 RD4 3사이클(36 x mcupcen)동안 신호가 유지되어야함, 2 x mcupcen동안 뭔가 시프트
-*/
-
 //
 //  General purpose registers
 //
@@ -1165,7 +1165,7 @@ end
      w 0x06 MKH - Mask High(D[7:1])
      w 0x07 MKL - Mask Low(D[1:0])
     rw 0x08 ANM - ADC Mode(D[4:0], 0x00 after reset)
-    rw 0x09 SMH - Serial Mode High(0x00 after reset)
+    rw 0x09 SMH - Serial Mode High(0x00 after reset) 
      w 0x0A SML - Serial Mode Low(0x48 after reset)
     rw 0x0B EOM - Timer/event counter output mode
      w 0x0C ETMM - Timer/event counter mode
@@ -1208,22 +1208,45 @@ always @(*) begin
 end
 
 //port related register
-reg     [7:0]   sreg_PAO, sreg_PBO, sreg_PCO, sreg_PDO, sreg_PFO; //undefined after reset
+reg     [7:0]   sreg_PAO, sreg_PBO, sreg_PCO, sreg_PDO, sreg_PFO; //undefined after reset, see page 180
 reg     [7:0]   sreg_MA, sreg_MB, sreg_MC, sreg_MF, sreg_MM, sreg_MCC;
 
 reg     [6:0]   sreg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
 reg     [2:0]   sreg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
-assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b0};
 
+reg     [4:0]   sreg_ANM; //ADC settings
+
+reg     [7:0]   sreg_SMH, sreg_SML; //serial interface settings
+
+reg     [7:0]   sreg_EOM;
+reg     [7:0]   sreg_ETMM;
+reg     [7:0]   sreg_TMM;
+reg     [7:0]   sreg_TM0, sreg_TM1; //undefined after reset, see page 180
+
+reg     [1:0]   sreg_ZCM;
+
+reg     [7:0]   sreg_ETM0, sreg_ETM1; //undefined after reset, see page 180
+
+reg     [7:0]   sreg_CR[0:3];
+
+assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b0};
+assign o_REG_MM = sreg_MM;
+
+reg     [7:0]   sreg_RDBUS;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         sreg_PAO <= 8'h00; sreg_PBO <= 8'h00; sreg_PCO <= 8'h00; sreg_PDO <= 8'h00; sreg_PFO <= 8'h00;
-        sreg_MA  <= 8'hFF; sreg_MB  <= 8'hFF; sreg_MC  <= 8'hFF; sreg_MM  <= 8'h00; sreg_MF  <= 8'hFF;
+        sreg_MA  <= 8'hFF; sreg_MB  <= 8'hFF; sreg_MC  <= 8'hFF; sreg_MF  <= 8'hFF; sreg_MM  <= 8'h00;
         sreg_MCC <= 8'h00;
-
-
-        sreg_MKL <= 7'b1110000;
-        sreg_MKH <= 3'b111;
+        sreg_MKL <= 7'b1111111; sreg_MKH <= 3'b111;
+        sreg_ANM <= 5'h00;
+        sreg_SMH <= 8'h00; sreg_SML <= 8'h48;
+        sreg_EOM <= 8'h00;
+        sreg_ETMM <= 8'h00;
+        sreg_TMM <= 8'hFF;
+        sreg_TM0 <= 8'h00; sreg_TM1 <= 8'h00; //see page 79
+        sreg_ZCM <= 2'b11; //see page 59
+        sreg_ETM0 <= 8'h00; sreg_ETM1 <= 8'h00;
     end
     else begin if(cycle_tick) begin
         case(sr_wr_addr) 
@@ -1232,9 +1255,51 @@ always @(posedge emuclk) begin
             6'h02: sreg_PCO <= alu_output[7:0];
             6'h03: sreg_PDO <= alu_output[7:0];
             6'h05: sreg_PFO <= alu_output[7:0];
-            
+            6'h06: sreg_MKL <= alu_output[7:1];
+            6'h07: sreg_MKH <= alu_output[2:0];
+            6'h08: sreg_ANM <= alu_output[4:0];
+            6'h09: sreg_SMH <= alu_output[7:0];
+            6'h0A: sreg_SML <= alu_output[7:0];
+            6'h0B: sreg_EOM <= alu_output[7:0];
+            6'h0C: sreg_ETMM <= alu_output[7:0];
+            6'h0D: sreg_TMM <= alu_output[7:0];
+            6'h10: sreg_MM <= alu_output[7:0];
+            6'h11: sreg_MCC <= alu_output[7:0];
+            6'h12: sreg_MA <= alu_output[7:0];
+            6'h13: sreg_MB <= alu_output[7:0];
+            6'h14: sreg_MC <= alu_output[7:0];
+            6'h17: sreg_MF <= alu_output[7:0];
+            6'h18: ; //TxB, not implemented
+            6'h1A: sreg_TM0 <= alu_output[7:0];
+            6'h1B: sreg_TM1 <= alu_output[7:0];
+            6'h28: sreg_ZCM <= alu_output[2:1];
+            6'h30: sreg_ETM0 <= alu_output[7:0];
+            6'h31: sreg_ETM1 <= alu_output[7:0];
+            default: ;
         endcase 
     end end
+end
+
+always @(*) begin
+    case(sr_rd_addr) 
+            6'h00: sreg_RDBUS = i_PA_I;
+            6'h01: sreg_RDBUS = i_PB_I;
+            6'h02: sreg_RDBUS = i_PC_I;
+            6'h03: sreg_RDBUS = i_PD_I; 
+            6'h05: sreg_RDBUS = i_PF_I;
+            6'h08: sreg_RDBUS = {3'b000, sreg_ANM};
+            6'h09: sreg_RDBUS = sreg_SMH;
+            6'h0B: sreg_RDBUS = sreg_EOM;
+            6'h0D: sreg_RDBUS = sreg_TMM;
+            6'h19: sreg_RDBUS = 8'h00; //RxB, not implemented
+            6'h20: sreg_RDBUS = sreg_CR[0];
+            6'h21: sreg_RDBUS = sreg_CR[1];
+            6'h22: sreg_RDBUS = sreg_CR[2];
+            6'h23: sreg_RDBUS = sreg_CR[3];
+            6'h32: sreg_RDBUS = 8'h00; //ECNT, not yet implemented
+            6'h33: sreg_RDBUS = 8'h00; //ECPT, not yet implemented
+            default: sreg_RDBUS = 8'h00;
+    endcase 
 end
 
 
@@ -1581,9 +1646,9 @@ always @(*) begin
             SA_DST_RP2    : alu_pa = reg_RP2;
             SA_DST_RP     : alu_pa = reg_RP;
             SA_DST_RP1    : alu_pa = reg_RP1;
-            SA_DST_SR_SR1 : alu_pa = 16'h0000; //to be fixed
-            SA_DST_SR2    : alu_pa = 16'h0000; //to be fixed
-            SA_DST_SR3    : alu_pa = 16'h0000; //to be fixed
+            SA_DST_SR_SR1 : alu_pa = sreg_RDBUS;
+            SA_DST_SR2    : alu_pa = sreg_RDBUS;
+            SA_DST_SR3    : alu_pa = sreg_RDBUS;
             SA_DST_MDL    : alu_pa = {8'h00, reg_MDL};
             SA_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
             SA_DST_MA     : alu_pa = reg_MA;
@@ -1602,9 +1667,9 @@ always @(*) begin
             SB_RP2        : alu_pb = reg_RP2;
             SB_RP         : alu_pb = reg_RP;
             SB_RP1        : alu_pb = reg_RP1;
-            SB_SR_SR1     : alu_pb = 16'h0000; //to be fixed
-            SB_SR2        : alu_pb = 16'h0000; //to be fixed
-            SB_SR4        : alu_pb = 16'h0000; //to be fixed
+            SB_SR_SR1     : alu_pb = sreg_RDBUS;
+            SB_SR2        : alu_pb = sreg_RDBUS;
+            SB_SR4        : alu_pb = sreg_RDBUS;
             SB_MDH        : alu_pb = {8'h00, reg_MDH};
             SB_MD         : alu_pb = {reg_MDH, reg_MDL};
             SB_MDI        : alu_pb = reg_MDI;
@@ -2309,8 +2374,62 @@ assign o_PF_O = sreg_PFO;
 
 
 
+///////////////////////////////////////////////////////////
+//////  ADC DATA ACQUISITION CONTROL
+////
 
+reg     [1:0]   adc_tick_cntr;
+wire            adc_tick = adc_tick_cntr == 2'd2 && mcuclk_pcen;
+always @(posedge emuclk) begin
+    if(!mrst_n) adc_tick_cntr <= 2'd0;
+    else begin if(mcuclk_pcen) begin
+        adc_tick_cntr <= adc_tick_cntr == 2'd2 ? 2'd0 : adc_tick_cntr + 2'd1;
+    end end
+end
 
+reg     [4:0]   current_adc_mode;
+reg     [7:0]   adc_state_cntr;
+reg     [2:0]   adc_ch;
+reg             adc_strobe_n;
+
+assign o_ADC_CH = current_adc_mode[0] ? current_adc_mode[3:1] : adc_ch;
+assign o_ADC_RD_n = adc_strobe_n;
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        current_adc_mode <= 5'b00000;
+        adc_state_cntr <= 8'd0;
+        adc_ch <= 3'd0;
+    end
+    else begin if(adc_tick) begin
+        if(( current_adc_mode[4] && adc_state_cntr == 8'd143) || 
+           (!current_adc_mode[4] && adc_state_cntr == 8'd191)) begin
+
+            //make a copy of the current ANM reg value
+            current_adc_mode <= sreg_ANM;
+
+            //scan mode/single ch mode select
+            if(sreg_ANM[0] != current_adc_mode[0]) adc_ch <= {sreg_ANM[3], 2'b00}; //if the mode has been changed, initialize the counter
+            else adc_ch[1:0] <= adc_ch[1:0] == 2'b11 ? 2'b00 : adc_ch[1:0] + 2'b01; //count up
+
+            //reset the adc state counter
+            adc_state_cntr <= 8'd0;
+        end
+        else begin
+            adc_state_cntr <= adc_state_cntr + 8'd1;
+        end
+
+        if(adc_state_cntr == 8'd0) adc_strobe_n <= 1'b0;
+        else if(adc_state_cntr == 8'd127) begin
+            adc_strobe_n <= current_adc_mode[4];
+            sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
+        end
+        else if(adc_state_cntr == 8'd175) begin
+            adc_strobe_n <= ~current_adc_mode[4];
+            sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
+        end
+    end end
+end
 
 
 endmodule

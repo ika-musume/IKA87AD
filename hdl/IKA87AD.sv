@@ -490,7 +490,7 @@ always @(posedge emuclk) begin
             if(mcuclk_pcen) hard_stop_flag <= hstop_osc_unstable == 1'b1;
         end
         else begin
-            if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_syncchain;
+            if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_syncchain[1];
         end
     end
 end
@@ -995,16 +995,17 @@ reg     [7:0]   regpair_EAH[0:1], regpair_EAL[0:1],
                 regpair_H[0:1]  , regpair_L[0:1]  ;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        regpair_EAH[0] <= 8'h00; regpair_EAH[1] <= 8'h00;
-        regpair_EAL[0] <= 8'h00; regpair_EAL[1] <= 8'h00;
-        regpair_V[0] <= 8'h00; regpair_V[1] <= 8'h00;
-        regpair_A[0] <= 8'h00; regpair_A[1] <= 8'h00;
-        regpair_B[0] <= 8'h00; regpair_B[1] <= 8'h00;
-        regpair_C[0] <= 8'h00; regpair_C[1] <= 8'h00;
-        regpair_D[0] <= 8'h00; regpair_D[1] <= 8'h00;
-        regpair_E[0] <= 8'h00; regpair_E[1] <= 8'h00;
-        regpair_H[0] <= 8'h00; regpair_H[1] <= 8'h00;
-        regpair_L[0] <= 8'h00; regpair_L[1] <= 8'h00;
+        //GPRs remain in undefined status after reset
+        //regpair_EAH[0] <= 8'h00; regpair_EAH[1] <= 8'h00;
+        //regpair_EAL[0] <= 8'h00; regpair_EAL[1] <= 8'h00;
+        //regpair_V[0] <= 8'h00; regpair_V[1] <= 8'h00;
+        //regpair_A[0] <= 8'h00; regpair_A[1] <= 8'h00;
+        //regpair_B[0] <= 8'h00; regpair_B[1] <= 8'h00;
+        //regpair_C[0] <= 8'h00; regpair_C[1] <= 8'h00;
+        //regpair_D[0] <= 8'h00; regpair_D[1] <= 8'h00;
+        //regpair_E[0] <= 8'h00; regpair_E[1] <= 8'h00;
+        //regpair_H[0] <= 8'h00; regpair_H[1] <= 8'h00;
+        //regpair_L[0] <= 8'h00; regpair_L[1] <= 8'h00;
     end
     else begin
         if(cycle_tick) begin
@@ -1098,7 +1099,7 @@ always @(posedge emuclk) begin
     //REGISTERS
     if(!mrst_n) begin
         reg_PC <= 16'hFFFF;
-        reg_SP <= 16'hXXXX; //undefined after reset
+        //reg_SP <= 16'hFFFF; //undefined after reset
         reg_MA <= 16'h0000;
         reg_TEMP <= 16'h0000;
     end
@@ -1433,8 +1434,8 @@ end
 
 //address high, multiplexed address low/byte data output
 wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MDH : reg_MDL;
-wire    [7:0]   addr_hi_out = memory_access_address[15:8];
-wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
+//wire    [7:0]   addr_hi_out = memory_access_address[15:8];
+//wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
 
 //address/data output
 assign  o_A = memory_access_address;
@@ -1594,7 +1595,7 @@ always @(*) begin
 end
 
 //rpa addressing
-reg     [15:0]   reg_RPA1, reg_RPA, reg_RPA2, reg_RPA2_OFFSET;
+reg     [15:0]   reg_RPA, reg_RPA2, reg_RPA2_OFFSET;
 always @(*) begin
     //rpa, including auto inc/dec
     case(reg_OPCODE[2:0])
@@ -1687,7 +1688,7 @@ always @(*) begin
             SB_ADD1       : alu_pb = 16'h0001;
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
-            SB_RPA1       : alu_pb = reg_RPA;
+            SB_RPA        : alu_pb = reg_RPA;
             SB_RPA2       : alu_pb = reg_RPA2;
             SB_OFFSET     : alu_pb = reg_RPA2_OFFSET;
             default       : alu_pb = 16'h0000;

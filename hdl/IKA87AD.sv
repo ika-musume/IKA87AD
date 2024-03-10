@@ -48,6 +48,8 @@ module IKA87AD(
     input   wire    [7:0]       i_PC_I,
     output  wire    [7:0]       o_PC_O,
     output  wire    [7:0]       o_PC_OE,
+    input   wire                i_TI, //PC3
+    output  wire                o_TO, //PC4
 
     //port D I/O and output enables
     input   wire    [7:0]       i_PD_I,
@@ -60,7 +62,7 @@ module IKA87AD(
     output  wire    [7:0]       o_PF_OE,
 
     //ADC interface
-    output  wire    [2:0]       o_ADC_CH, //adc channel select, from 0 to 7
+    output  wire    [2:0]       o_ADC_CH,   //adc channel select, from 0 to 7
     input   wire    [7:0]       i_ADC_DATA, //adc data input
     output  wire                o_ADC_RD_n  //conversion data read strobe
 );
@@ -160,8 +162,8 @@ wire            mc_end_of_instruction = mc_next_bus_acc == RD4 && !(mc_type == M
 //////  TIMING GENERATOR
 ////
 
-reg             soft_halt_flag, soft_stop_flag, hard_stop_flag;
-wire            sr_stop = soft_halt_flag | soft_stop_flag | hard_stop_flag;
+reg             halt_flag, soft_stop_flag, hard_stop_flag;
+wire            sr_stop = halt_flag | soft_stop_flag | hard_stop_flag;
 
 reg     [11:0]  timing_sr;
 reg     [1:0]   current_bus_acc;
@@ -228,17 +230,16 @@ wire    [10:0]  irq_mask_n; //interrupt mask register: (MSB)empty, full, adc, nc
 reg             irq_enabled;
 
 //interrupt sources(wire)
-wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
-wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is_CNTR0, is_nINT2, is_pINT1, is_TIMER1, is_TIMER0, is_NMI};
+wire            is_NMI, is_pINT1, is_nINT2, is_ADC; //implemented
+wire            is_TIMER0, is_TIMER1, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_BUFFULL, is_BUFEMPTY; //not yet implemented
 
-assign is_TIMER0 = 1'b0;
-assign is_TIMER1 = 1'b0;
 assign is_CNTR0 = 1'b0;
 assign is_CNTR1 = 1'b0;
 assign is_nCNTRCIN = 1'b0;
-assign is_ADC = 1'b0;
 assign is_BUFFULL = 1'b0;
 assign is_BUFEMPTY = 1'b0;
+
+wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is_CNTR0, is_nINT2, is_pINT1, is_TIMER1, is_TIMER0, is_NMI};
 
 //interrupt sampler, note that interrupt sampler uses an independent divided clock
 IKA87AD_irqsampler u_nmi_sampler   (mrst_n, emuclk, mcuclk_pcen, ~i_NMI_n, is_NMI);
@@ -247,7 +248,7 @@ IKA87AD_irqsampler u_nint2_sampler (mrst_n, emuclk, mcuclk_pcen, ~i_INT2_n, is_n
 
 //interrupt flags
 wire    [10:0]  iflag; 
-assign iflag[10:5] = 6'd0;
+
 /*
 wire            iflag_NMI       = iflag[0]; //nNMI physical pin input, takes maximum 10us to suppress glitch
 wire            iflag_TIMER0    = iflag[1]; //timer 0/1 match interrupt
@@ -309,6 +310,10 @@ IKA87AD_iflag u_int1        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[3], irq
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[3]);
 IKA87AD_iflag u_int2        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[4], irq_mask_n[4], 5'd4, reg_OPCODE[4:0], 
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[4]);
+
+//ADC
+IKA87AD_iflag u_adc         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[8], irq_mask_n[8], 5'd8, reg_OPCODE[4:0], 
+                            &{irq_mask_n[8:7]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd3, iflag[8]);
 
 //interrupt generation
 reg     [2:0]   irq_lv_z;
@@ -439,7 +444,7 @@ always @(posedge emuclk) begin
         if(mcuclk_pcen) begin
             hstop_osc_unstable_z <= hstop_osc_unstable;
 
-            if(stop_syncchain) begin
+            if(stop_syncchain[1]) begin
                 hstop_osc_unstable <= 1'b1;
             end
             else begin
@@ -463,22 +468,23 @@ always @(posedge emuclk) begin
 end
 
 //halt and stop, can be halt insturction without stopping chip's oscillator, this core will stop the timing generator
+wire            release_soft_stop;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        soft_halt_flag <= 1'b0;
+        halt_flag <= 1'b0;
         soft_stop_flag <= 1'b0;
         hard_stop_flag <= 1'b0;
     end
     else begin
-        if(soft_halt_flag) begin
-            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) soft_halt_flag <= 1'b0;
+        if(halt_flag) begin
+            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) halt_flag <= 1'b0;
         end
         else begin
-            if(cycle_tick) if(soft_halt_detected) soft_halt_flag <= 1'b1;
+            if(cycle_tick) if(soft_halt_detected) halt_flag <= 1'b1;
         end
         
         if(soft_stop_flag) begin
-            
+            if(mcuclk_pcen) if(release_soft_stop) soft_stop_flag <= 1'b0;
         end
         else begin
             if(cycle_tick) if(soft_stop_detected) soft_stop_flag <= 1'b1;
@@ -487,7 +493,7 @@ always @(posedge emuclk) begin
         //According to the datasheet on page 178, if RST is asserted before the oscillator has stabilized,
         //the CPU core will start the program from 0x0000 without waiting for stabilization. I emulated that.
         if(hard_stop_flag) begin
-            if(mcuclk_pcen) hard_stop_flag <= hstop_osc_unstable == 1'b1;
+            if(mcuclk_pcen) hard_stop_flag <= hstop_osc_unstable == 1'b0 && hstop_osc_unstable_z == 1'b1 ? 1'b0 : 1'b1; //release stop
         end
         else begin
             if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_syncchain[1];
@@ -520,10 +526,9 @@ always @(posedge emuclk) begin
     end
 end
 
-//microcode address counter
+//microsequencer
 localparam WAIT_FOR_DECODING = 1'b0;
 localparam RUNNING = 1'b1;
-
 reg             mseq_state;      //microsequencer state
 reg     [3:0]   mseq_susp_timer; //microsequencer suspension timer
 reg     [2:0]   mseq_cntr;       //microsequencer counter, registered output
@@ -1099,7 +1104,7 @@ always @(posedge emuclk) begin
     //REGISTERS
     if(!mrst_n) begin
         reg_PC <= 16'hFFFF;
-        //reg_SP <= 16'hFFFF; //undefined after reset
+        reg_SP <= 16'h0000; //undefined after reset
         reg_MA <= 16'h0000;
         reg_TEMP <= 16'h0000;
     end
@@ -1249,36 +1254,41 @@ always @(posedge emuclk) begin
         sreg_ZCM <= 2'b11; //see page 59
         sreg_ETM0 <= 8'h00; sreg_ETM1 <= 8'h00;
     end
-    else begin if(cycle_tick) begin
-        case(sr_wr_addr) 
-            6'h00: sreg_PAO <= alu_output[7:0];
-            6'h01: sreg_PBO <= alu_output[7:0];
-            6'h02: sreg_PCO <= alu_output[7:0];
-            6'h03: sreg_PDO <= alu_output[7:0];
-            6'h05: sreg_PFO <= alu_output[7:0];
-            6'h06: sreg_MKH <= alu_output[2:0];
-            6'h07: sreg_MKL <= alu_output[7:1];
-            6'h08: sreg_ANM <= alu_output[4:0];
-            6'h09: sreg_SMH <= alu_output[7:0];
-            6'h0A: sreg_SML <= alu_output[7:0];
-            6'h0B: sreg_EOM <= alu_output[7:0];
-            6'h0C: sreg_ETMM <= alu_output[7:0];
-            6'h0D: sreg_TMM <= alu_output[7:0];
-            6'h10: sreg_MM <= alu_output[7:0];
-            6'h11: sreg_MCC <= alu_output[7:0];
-            6'h12: sreg_MA <= alu_output[7:0];
-            6'h13: sreg_MB <= alu_output[7:0];
-            6'h14: sreg_MC <= alu_output[7:0];
-            6'h17: sreg_MF <= alu_output[7:0];
-            6'h18: ; //TxB, not implemented
-            6'h1A: sreg_TM0 <= alu_output[7:0];
-            6'h1B: sreg_TM1 <= alu_output[7:0];
-            6'h28: sreg_ZCM <= alu_output[2:1];
-            6'h30: sreg_ETM0 <= alu_output[7:0];
-            6'h31: sreg_ETM1 <= alu_output[7:0];
-            default: ;
-        endcase 
-    end end
+    else begin 
+        if(cycle_tick) begin
+            case(sr_wr_addr) 
+                6'h00: sreg_PAO <= alu_output[7:0];
+                6'h01: sreg_PBO <= alu_output[7:0];
+                6'h02: sreg_PCO <= alu_output[7:0];
+                6'h03: sreg_PDO <= alu_output[7:0];
+                6'h05: sreg_PFO <= alu_output[7:0];
+                6'h06: sreg_MKH <= alu_output[2:0];
+                6'h07: sreg_MKL <= alu_output[7:1];
+                6'h08: sreg_ANM <= alu_output[4:0];
+                6'h09: sreg_SMH <= alu_output[7:0];
+                6'h0A: sreg_SML <= alu_output[7:0];
+                6'h0B: sreg_EOM <= alu_output[7:0];
+                6'h0C: sreg_ETMM <= alu_output[7:0];
+                6'h0D: sreg_TMM <= alu_output[7:0];
+                6'h10: sreg_MM <= alu_output[7:0];
+                6'h11: sreg_MCC <= alu_output[7:0];
+                6'h12: sreg_MA <= alu_output[7:0];
+                6'h13: sreg_MB <= alu_output[7:0];
+                6'h14: sreg_MC <= alu_output[7:0];
+                6'h17: sreg_MF <= alu_output[7:0];
+                6'h18: ; //TxB, not implemented
+                6'h1A: sreg_TM0 <= alu_output[7:0];
+                6'h1B: sreg_TM1 <= alu_output[7:0];
+                6'h28: sreg_ZCM <= alu_output[2:1];
+                6'h30: sreg_ETM0 <= alu_output[7:0];
+                6'h31: sreg_ETM1 <= alu_output[7:0];
+                default: ;
+            endcase 
+        end 
+        else if(mcuclk_pcen) begin
+            if(release_soft_stop) sreg_TMM <= 8'hFF;
+        end
+    end
 end
 
 always @(*) begin
@@ -2398,6 +2408,8 @@ reg             adc_strobe_n;
 
 assign o_ADC_CH = current_adc_mode[0] ? current_adc_mode[3:1] : adc_ch;
 assign o_ADC_RD_n = adc_strobe_n;
+assign is_ADC = current_adc_mode[4] ? adc_tick_cntr == 2'd2 && adc_state_cntr == 8'd127 && adc_ch[1:0] == 2'b11: 
+                                      adc_tick_cntr == 2'd2 && adc_state_cntr == 8'd175 && adc_ch[1:0] == 2'b11;
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
@@ -2407,7 +2419,7 @@ always @(posedge emuclk) begin
     end
     else begin if(adc_tick) begin
         if(( current_adc_mode[4] && adc_state_cntr == 8'd143) || 
-           (!current_adc_mode[4] && adc_state_cntr == 8'd191)) begin
+           (~current_adc_mode[4] && adc_state_cntr == 8'd191)) begin
 
             //make a copy of the current ANM reg value
             current_adc_mode <= sreg_ANM;
@@ -2423,17 +2435,128 @@ always @(posedge emuclk) begin
             adc_state_cntr <= adc_state_cntr + 8'd1;
         end
 
+        //data acquisition control
         if(adc_state_cntr == 8'd0) adc_strobe_n <= 1'b0;
         else if(adc_state_cntr == 8'd127) begin
-            adc_strobe_n <= current_adc_mode[4];
-            if(current_adc_mode[0]) sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
+            adc_strobe_n <= current_adc_mode[4] ? 1'b1 : 1'b0;
+            if(current_adc_mode[4]) sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
         end
         else if(adc_state_cntr == 8'd175) begin
-            adc_strobe_n <= ~current_adc_mode[4];
-            if(~current_adc_mode[0]) sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
+            adc_strobe_n <= current_adc_mode[4] ? 1'b0 : 1'b1;
+            if(~current_adc_mode[4]) sreg_CR[adc_ch[1:0]] <= i_ADC_DATA;
         end
     end end
 end
 
+
+
+///////////////////////////////////////////////////////////
+//////  TIMER
+////
+
+//make timer ticks
+reg     [1:0]   timer_prescaler;
+reg     [6:0]   timer_div_cntr;
+wire            timer_tick   = timer_prescaler == 2'd2 & mcuclk_pcen; //fs/3 tick
+wire            timer_div12  = timer_div_cntr[1:0] == 2'd3;
+wire            timer_div384 = timer_div_cntr == 7'd127;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        timer_prescaler <= 2'd0;
+        timer_div_cntr <= 7'd0;
+    end
+    else begin if(mcuclk_pcen) begin
+        if(hard_stop_flag || (soft_stop_flag && !iflag[0])) begin //stop timer
+            timer_prescaler <= timer_prescaler;
+            timer_div_cntr <= timer_div_cntr;
+        end
+        else begin
+            timer_prescaler <= timer_prescaler == 2'd2 ? 2'd0 : timer_prescaler + 2'd1;
+            if(timer_prescaler == 2'd2) timer_div_cntr <= timer_div_cntr == 7'd127 ? 7'd0 : timer_div_cntr + 7'd1;
+        end
+    end end
+end
+
+//tick from an external source
+reg     [2:0]   ti_sampler;
+wire            ti_nedet = (ti_sampler == 3'b100) & (timer_prescaler == 2'd2); //ti pin negative edge detected
+always @(posedge emuclk) begin
+    if(!mrst_n) ti_sampler <= 3'b000;
+    else begin if(timer_tick) begin
+        ti_sampler[0] <= i_TI;
+        ti_sampler[2:1] <= ti_sampler [1:0];
+    end end
+end
+
+//timer 0/1
+reg     [7:0]   timer0, timer1; //timer registersx`
+reg             tmff; 
+reg             timer0_cnt, timer1_cnt, tmff_toggle; //timer0/1 and tmff ticks
+wire            timer0_match = timer0_cnt & (timer0 == sreg_TM0) & (sr_wr_addr != 6'h1A); //this tick pokes the next DFFs
+wire            timer1_match = timer1_cnt & (timer1 == sreg_TM1) & (sr_wr_addr != 6'h1B);
+wire            tmff_pcen = tmff_toggle & (tmff == 1'b0) & timer_tick; //TMFF postive edge clock enable
+wire            tmff_ncen = tmff_toggle & (tmff == 1'b1) & timer_tick; //TMFF negative edge clock enable
+assign is_TIMER0 = ~soft_stop_flag & timer0_match & timer_tick;
+assign is_TIMER1 = ~soft_stop_flag & timer1_match & timer_tick;
+assign release_soft_stop = soft_stop_flag & timer1_match & timer_tick; //release soft stop
+assign o_TO = tmff;
+always @(*) begin
+    case(sreg_TMM[3:2])
+        2'b00: timer0_cnt = timer_div12;
+        2'b01: timer0_cnt = timer_div384;
+        2'b10: timer0_cnt = ti_nedet;
+        2'b11: timer0_cnt = 1'b0;
+    endcase
+
+    case(sreg_TMM[6:5])
+        2'b00: timer1_cnt = timer_div12;
+        2'b01: timer1_cnt = timer_div384;
+        2'b10: timer1_cnt = ti_nedet;
+        2'b11: timer1_cnt = timer0_match;
+    endcase
+
+    case(sreg_TMM[1:0])
+        2'b00: tmff_toggle = timer0_match;
+        2'b01: tmff_toggle = timer1_match;
+        2'b10: tmff_toggle = 1'b1; //toggle at every timer_tick(fs/3)
+        2'b11: tmff_toggle = 1'b0; //reset
+    endcase
+end
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        timer0 <= 8'h01;
+        timer1 <= 8'h01;
+        tmff <= 1'b0;
+    end
+    else if(soft_stop_flag && !iflag[0]) begin
+        timer0 <= 8'h01;
+        timer1 <= 8'h01;
+    end
+    else begin if(timer_tick) begin //use timer tick(fs/3)
+        //define timer 0 behavior
+        if(sreg_TMM[4]) timer0 <= 8'h01;
+        else begin
+            if(timer0_cnt) begin
+                if(timer0 == sreg_TM0 && sr_wr_addr != 6'h1A) timer0 <= 8'h01; //no comparison is performed while updating TM0, see datasheet p79
+                else timer0 <= timer0 == 8'hFF ? 8'h00 : timer0 + 8'h01;
+            end
+        end
+
+        //define timer 1 behavior
+        if(sreg_TMM[7]) timer1 <= 8'h01;
+        else begin
+            if(timer1_cnt) begin
+                if(timer1 == sreg_TM1 && sr_wr_addr != 6'h1B) timer1 <= 8'h01; //no comparison is performed while updating TM1
+                else timer1 <= timer1 == 8'hFF ? 8'h00 : timer1 + 8'h01;
+            end
+        end
+
+        //define tmff behavior
+        if(tmff_toggle) tmff <= ~tmff;
+        else tmff <= 1'b0;
+
+    end end
+end
 
 endmodule

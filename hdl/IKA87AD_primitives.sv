@@ -18,8 +18,8 @@ module IKA87AD_iflag (
 always @(posedge i_EMUCLK) begin
     if(!i_MRST_n) o_IFLAGREG <= 1'b0;
     else begin 
-        if(o_IFLAGREG) begin
-            if(i_RSTTICK) begin
+        if(i_RSTTICK) begin
+            if(o_IFLAGREG) begin
                 if(i_IS_ENABLED) begin
                     if(i_MULTI_IRQ_ENABLED) begin
                         if(i_MANUAL_ACK && (i_IRQ_CODE_TO_BE_ACKD == i_IRQ_CODE_UNIQUE)) o_IFLAGREG <= 1'b0; //manual ack

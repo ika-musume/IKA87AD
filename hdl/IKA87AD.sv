@@ -2435,8 +2435,8 @@ reg     [7:0]   adc_state_cntr;
 reg     [2:0]   adc_ch;
 reg             adc_strobe_n;
 
-assign o_ADC_CH = current_adc_mode[0] ? current_adc_mode[3:1] : adc_ch;
-assign o_ADC_RD_n = adc_strobe_n;
+assign o_ANx_ANALOG_CH = current_adc_mode[0] ? current_adc_mode[3:1] : adc_ch;
+assign o_ANx_ANALOG_RD_n = adc_strobe_n;
 assign is_ADC = current_adc_mode[4] ? div3_tick_cntr == 2'd2 && adc_state_cntr == 8'd127 && adc_ch[1:0] == 2'b11: 
                                       div3_tick_cntr == 2'd2 && adc_state_cntr == 8'd175 && adc_ch[1:0] == 2'b11;
 

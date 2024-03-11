@@ -80,6 +80,31 @@ end
 
 endmodule
 
+module IKA87AD_nedet (
+    input   wire            i_MRST_n,
+    input   wire            i_EMUCLK,
+    input   wire            i_TICK,
+    input   wire            i_IN,
+    output  reg             o_NEDET
+);
+
+reg     [1:0]   sampler;
+always @(posedge i_EMUCLK) begin
+    if(!i_MRST_n) begin 
+        sampler <= 3'b000;
+        o_NEDET <= 1'b0;
+    end
+    else begin if(i_TICK) begin
+        sampler[0] <= i_IN;
+        sampler[1] <= sampler[0];
+
+        if(sampler == 2'b10 && i_IN == 1'b0) o_NEDET <= 1'b1;
+        else o_NEDET <= 1'b0;
+    end end
+end
+
+endmodule
+
 class IKA87AD_tsio #(parameter W = 8);
     static function [W-1:0] port_input (input [W-1:0] port_outlatch, input [W-1:0] ext_data, input [W-1:0] port_dir);
         for(int i = 0; i < W; i++) begin

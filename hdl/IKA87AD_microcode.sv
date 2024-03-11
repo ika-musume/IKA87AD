@@ -252,7 +252,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         DMOV_EA_RP      : mc <= {MCTYPE0, 1'b0, 1'b1, SB_EA, SA_DST_RP, 2'b00, RD4};                    //EA<-rp, RD4
 
-        DMOV_SR3_EA     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        DMOV_SR3_EA     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
         DMOV_SR3_EA+1   : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
         DMOV_SR3_EA+2   : mc <= {MCTYPE0, 1'b0, 1'b0, SB_EA, SA_DST_SR3, 2'b00, RD4};                   //sr3<-EA, RD4
 

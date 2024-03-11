@@ -4,7 +4,7 @@ add wave -noupdate /IKA87AD_tb/EMUCLK
 add wave -noupdate /IKA87AD_tb/PCEN
 add wave -noupdate /IKA87AD_tb/RST_n
 add wave -noupdate -radix unsigned /IKA87AD_tb/u_dut/current_bus_acc
-add wave -noupdate -radix hexadecimal /IKA87AD_tb/cpu_addr
+add wave -noupdate -radix hexadecimal -childformat {{{/IKA87AD_tb/cpu_addr[15]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[14]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[13]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[12]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[11]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[10]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[9]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[8]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[7]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[6]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[5]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[4]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[3]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[2]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[1]} -radix hexadecimal} {{/IKA87AD_tb/cpu_addr[0]} -radix hexadecimal}} -subitemconfig {{/IKA87AD_tb/cpu_addr[15]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[14]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[13]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[12]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[11]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[10]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[9]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[8]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[7]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[6]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[5]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[4]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[3]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[2]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[1]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/cpu_addr[0]} {-height 15 -radix hexadecimal}} /IKA87AD_tb/cpu_addr
 add wave -noupdate /IKA87AD_tb/cpu_rd_n
 add wave -noupdate /IKA87AD_tb/cpu_wr_n
 add wave -noupdate -radix hexadecimal /IKA87AD_tb/dbus
@@ -35,21 +35,21 @@ add wave -noupdate -group FLAGS /IKA87AD_tb/u_dut/flag_SK
 add wave -noupdate -group FLAGS /IKA87AD_tb/u_dut/flag_HC
 add wave -noupdate -group FLAGS /IKA87AD_tb/u_dut/flag_L1
 add wave -noupdate -group FLAGS /IKA87AD_tb/u_dut/flag_L0
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/i_NMI_n
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/i_INT1
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/i_INT2_n
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/irq_mask_n
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/iflag
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/irq_enabled
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/irq_pending
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/irq_detected
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/force_exec_hardi
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/hardi_proc_cyc
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/softi_proc_cyc
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/iflag_manual_ack
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/iflag_auto_ack
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/irq_lv
-add wave -noupdate -group IRQ /IKA87AD_tb/u_dut/irq_lv_z
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/i_NMI_n
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/i_INT1
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/i_INT2_n
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/irq_mask_n
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/iflag
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/irq_enabled
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/irq_pending
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/irq_detected
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/force_exec_hardi
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/hardi_proc_cyc
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/softi_proc_cyc
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/iflag_manual_ack
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/iflag_auto_ack
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/irq_lv
+add wave -noupdate -expand -group IRQ /IKA87AD_tb/u_dut/irq_lv_z
 add wave -noupdate -group BUS /IKA87AD_tb/u_dut/o_M1_n
 add wave -noupdate -group BUS /IKA87AD_tb/u_dut/o_IO_n
 add wave -noupdate -group BUS /IKA87AD_tb/u_dut/mc_next_bus_acc
@@ -175,8 +175,6 @@ add wave -noupdate -group ADC /IKA87AD_tb/u_dut/sreg_ANM
 add wave -noupdate -group ADC /IKA87AD_tb/u_dut/current_adc_mode
 add wave -noupdate -group ADC -radix hexadecimal -childformat {{{/IKA87AD_tb/u_dut/sreg_CR[0]} -radix hexadecimal} {{/IKA87AD_tb/u_dut/sreg_CR[1]} -radix hexadecimal} {{/IKA87AD_tb/u_dut/sreg_CR[2]} -radix hexadecimal} {{/IKA87AD_tb/u_dut/sreg_CR[3]} -radix hexadecimal}} -expand -subitemconfig {{/IKA87AD_tb/u_dut/sreg_CR[0]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/u_dut/sreg_CR[1]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/u_dut/sreg_CR[2]} {-height 15 -radix hexadecimal} {/IKA87AD_tb/u_dut/sreg_CR[3]} {-height 15 -radix hexadecimal}} /IKA87AD_tb/u_dut/sreg_CR
 add wave -noupdate -group ADC /IKA87AD_tb/u_dut/is_ADC
-add wave -noupdate -group ADC /IKA87AD_tb/u_dut/adc_tick_cntr
-add wave -noupdate -group ADC /IKA87AD_tb/u_dut/adc_tick
 add wave -noupdate -group ADC -radix unsigned /IKA87AD_tb/u_dut/adc_state_cntr
 add wave -noupdate -group ADC /IKA87AD_tb/u_dut/adc_ch
 add wave -noupdate -group ADC -radix unsigned /IKA87AD_tb/u_dut/o_ADC_CH
@@ -208,28 +206,43 @@ add wave -noupdate -group SR /IKA87AD_tb/u_dut/sreg_ZCM
 add wave -noupdate -group SR /IKA87AD_tb/u_dut/sreg_ETM0
 add wave -noupdate -group SR /IKA87AD_tb/u_dut/sreg_ETM1
 add wave -noupdate -group SR /IKA87AD_tb/u_dut/sreg_CR
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/sreg_TMM
-add wave -noupdate -expand -group TIMER -radix unsigned /IKA87AD_tb/u_dut/sreg_TM0
-add wave -noupdate -expand -group TIMER -radix unsigned /IKA87AD_tb/u_dut/sreg_TM1
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer_prescaler
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer_div_cntr
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer_tick
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer_div12
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer_div384
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/ti_sampler
-add wave -noupdate -expand -group TIMER -radix unsigned /IKA87AD_tb/u_dut/ti_nedet
-add wave -noupdate -expand -group TIMER -radix unsigned /IKA87AD_tb/u_dut/timer0
-add wave -noupdate -expand -group TIMER -radix unsigned /IKA87AD_tb/u_dut/timer1
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer0_match
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer1_match
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer0_cnt
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/timer1_cnt
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/tmff_toggle
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/tmff
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/tmff_pcen
-add wave -noupdate -expand -group TIMER /IKA87AD_tb/u_dut/tmff_ncen
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/sreg_TMM
+add wave -noupdate -group TIMER -radix unsigned /IKA87AD_tb/u_dut/sreg_TM0
+add wave -noupdate -group TIMER -radix unsigned /IKA87AD_tb/u_dut/sreg_TM1
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer_prescaler
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer_div_cntr
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer_tick
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer_div12
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer_div384
+add wave -noupdate -group TIMER -radix unsigned /IKA87AD_tb/u_dut/ti_nedet
+add wave -noupdate -group TIMER -radix unsigned /IKA87AD_tb/u_dut/timer0
+add wave -noupdate -group TIMER -radix unsigned /IKA87AD_tb/u_dut/timer1
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer0_match
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer1_match
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer0_cnt
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/timer1_cnt
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/tmff_toggle
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/tmff
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/tmff_pcen
+add wave -noupdate -group TIMER /IKA87AD_tb/u_dut/tmff_ncen
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/div3_tick
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/ci_sampler
+add wave -noupdate -expand -group EVENT -radix unsigned /IKA87AD_tb/u_dut/ci_nedet
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/ci_state
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/sr_wr_addr
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/sreg_ETMM
+add wave -noupdate -expand -group EVENT -radix unsigned /IKA87AD_tb/u_dut/sreg_ETM0
+add wave -noupdate -expand -group EVENT -radix unsigned /IKA87AD_tb/u_dut/sreg_ETM1
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/event_cntr_cnt
+add wave -noupdate -expand -group EVENT -radix unsigned /IKA87AD_tb/u_dut/event_cntr
+add wave -noupdate -expand -group EVENT -radix unsigned /IKA87AD_tb/u_dut/event_cntr_next
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/cntr0_match
+add wave -noupdate -expand -group EVENT /IKA87AD_tb/u_dut/cntr1_match
+add wave -noupdate -expand -group EXCEPTIONS /IKA87AD_tb/u_dut/eflag
+add wave -noupdate -expand -group EXCEPTIONS /IKA87AD_tb/u_dut/fs_OV
+add wave -noupdate -expand -group EXCEPTIONS -expand /IKA87AD_tb/u_dut/fs_ANx
 TreeUpdate [SetDefaultTree]
-WaveRestoreCursors {{Cursor 1} {224880 ps} 0}
+WaveRestoreCursors {{Cursor 1} {7607080 ps} 0}
 quietly wave cursor active 1
 configure wave -namecolwidth 166
 configure wave -valuecolwidth 100
@@ -245,4 +258,4 @@ configure wave -griddelta 40
 configure wave -timeline 0
 configure wave -timelineunits ps
 update
-WaveRestoreZoom {0 ps} {370720 ps}
+WaveRestoreZoom {0 ps} {33285120 ps}

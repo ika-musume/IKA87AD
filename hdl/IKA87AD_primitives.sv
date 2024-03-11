@@ -18,8 +18,8 @@ module IKA87AD_iflag (
 always @(posedge i_EMUCLK) begin
     if(!i_MRST_n) o_IFLAGREG <= 1'b0;
     else begin 
-        if(o_IFLAGREG) begin
-            if(i_RSTTICK) begin
+        if(i_RSTTICK) begin
+            if(o_IFLAGREG) begin
                 if(i_IS_ENABLED) begin
                     if(i_MULTI_IRQ_ENABLED) begin
                         if(i_MANUAL_ACK && (i_IRQ_CODE_TO_BE_ACKD == i_IRQ_CODE_UNIQUE)) o_IFLAGREG <= 1'b0; //manual ack
@@ -48,7 +48,7 @@ module IKA87AD_irqsampler (
 );
 
 reg     [5:0]   sample_tick_cntr;
-always @(i_EMUCLK) begin
+always @(posedge i_EMUCLK) begin
     if(!i_MRST_n) sample_tick_cntr <= 6'd0;
     else begin if(i_CNTTICK) begin
         sample_tick_cntr <= sample_tick_cntr == 6'd35 ? 6'd0 : sample_tick_cntr + 6'd1;
@@ -56,7 +56,7 @@ always @(i_EMUCLK) begin
 end
 
 reg     [2:0]   is_sr;
-always @(i_EMUCLK) begin
+always @(posedge i_EMUCLK) begin
     if(!i_MRST_n) is_sr <= 3'b000;
     else begin if(sample_tick_cntr == 6'd35 && i_CNTTICK) begin
         is_sr[0] <= i_IS;
@@ -65,7 +65,7 @@ always @(i_EMUCLK) begin
 end
 
 reg             det, det_z;
-always @(i_EMUCLK) begin
+always @(posedge i_EMUCLK) begin
     if(!i_MRST_n) begin
         det <= 1'b0; det_z <= 1'b0; o_DET <= 1'b0;
     end
@@ -79,3 +79,36 @@ always @(i_EMUCLK) begin
 end
 
 endmodule
+
+module IKA87AD_nedet (
+    input   wire            i_MRST_n,
+    input   wire            i_EMUCLK,
+    input   wire            i_TICK,
+    input   wire            i_IN,
+    output  reg             o_NEDET
+);
+
+reg     [1:0]   sampler;
+always @(posedge i_EMUCLK) begin
+    if(!i_MRST_n) begin 
+        sampler <= 3'b000;
+        o_NEDET <= 1'b0;
+    end
+    else begin if(i_TICK) begin
+        sampler[0] <= i_IN;
+        sampler[1] <= sampler[0];
+
+        if(sampler == 2'b10 && i_IN == 1'b0) o_NEDET <= 1'b1;
+        else o_NEDET <= 1'b0;
+    end end
+end
+
+endmodule
+
+class IKA87AD_tsio #(parameter W = 8);
+    static function [W-1:0] port_input (input [W-1:0] port_outlatch, input [W-1:0] ext_data, input [W-1:0] port_dir);
+        for(int i = 0; i < W; i++) begin
+            port_input[i] = port_dir[i] ? port_outlatch[i] : ext_data[i];
+        end
+    endfunction
+endclass

@@ -205,7 +205,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         LDEAX_EA_RPA2+4 : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_EA, 2'b00, RD4};                    //EA<-MD, RD4
 
         MVIX_RPA_IM     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
-        MVIX_RPA_IM+1   : mc <= {MCTYPE0, 1'b0, 1'b1, SB_RPA1, SA_DST_MA, 2'b00, WR3};                  //MA<-RPA, WR3
+        MVIX_RPA_IM+1   : mc <= {MCTYPE0, 1'b0, 1'b1, SB_RPA, SA_DST_MA, 2'b00, WR3};                   //MA<-RPA, WR3
         MVIX_RPA_IM+2   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
         SOFTI           : mc <= {MCTYPE1, 1'b0, 1'b0, SD_SP, SC_DST_MA, 4'b1000, IDLE};                 //MA<--SP, IDLE
@@ -215,7 +215,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         SOFTI+4         : mc <= {MCTYPE0, 1'b1, 1'b0, SB_ADDR_INT, SA_DST_PC, 2'b00, RD4};              //PC<-0060, RD4
 
         POP             : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1001, RD3};                  //MA<-SP+, RD3
-        POP+1           : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        POP+1           : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD1, SA_DST_SP, 2'b01, RD3};                  //SP<-SP+1, RD3
         POP+2           : mc <= {MCTYPE0, 1'b0, 1'b0, SB_MD, SA_DST_RP1, 2'b00, RD4};                   //MD<-rp1, WR3
 
         HARDI           : mc <= {MCTYPE1, 1'b0, 1'b0, SD_SP, SC_DST_MA, 4'b1000, IDLE};                 //MA<--SP, IDLE
@@ -252,7 +252,7 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         DMOV_EA_RP      : mc <= {MCTYPE0, 1'b0, 1'b1, SB_EA, SA_DST_RP, 2'b00, RD4};                    //EA<-rp, RD4
 
-        DMOV_SR3_EA     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        DMOV_SR3_EA     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
         DMOV_SR3_EA+1   : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
         DMOV_SR3_EA+2   : mc <= {MCTYPE0, 1'b0, 1'b0, SB_EA, SA_DST_SR3, 2'b00, RD4};                   //sr3<-EA, RD4
 

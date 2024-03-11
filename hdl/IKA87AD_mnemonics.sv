@@ -57,7 +57,7 @@ localparam SB_ZERO       = 5'b11001;
 localparam SB_ADD1       = 5'b11010;
 localparam SB_ADD2       = 5'b11011;
 localparam SB_TEMP       = 5'b11100;
-localparam SB_RPA1       = 5'b11101;
+localparam SB_RPA        = 5'b11101;
 localparam SB_RPA2       = 5'b11110;
 localparam SB_OFFSET     = 5'b11111;
 

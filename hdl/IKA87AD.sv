@@ -27,12 +27,19 @@ module IKA87AD(
     output  wire                o_DO_OE,
 
     //memory structure config register
-    output  wire    [7:0]       o_MEMSTRUCT, //MM register
+    output  wire    [7:0]       o_REG_MM, //MM register
 
     //interrupt control
     input   wire                i_NMI_n,
     input   wire                i_INT1,
-    input   wire                i_INT2_n,
+    input   wire                i_INT2_n, //PC3
+
+    //timer control
+    input   wire                i_TI, //PC3
+    output  wire                o_TO, //PC4
+
+    //event counter control
+    input   wire                i_CI, //PC5
 
     //port A I/O and output enables
     input   wire    [7:0]       i_PA_I,
@@ -57,7 +64,15 @@ module IKA87AD(
     //port F I/O and output enables
     input   wire    [7:0]       i_PF_I,
     output  wire    [7:0]       o_PF_O,
-    output  wire    [7:0]       o_PF_OE
+    output  wire    [7:0]       o_PF_OE,
+
+    //AN4-7 digital edge detector
+    input   wire    [3:0]       i_ANx_DIGITAL,
+
+    //ADC interface
+    output  wire    [2:0]       o_ANx_ANALOG_CH,   //adc channel select, from 0 to 7
+    input   wire    [7:0]       i_ANx_ANALOG_DATA, //adc data input
+    output  wire                o_ANx_ANALOG_RD_n  //conversion data read strobe
 );
 
 //include mnemonic list
@@ -143,7 +158,7 @@ wire            mc_s_ird         = mc_ctrl_output[2];
 
 //ALU FIELDS
 wire    [3:0]   arith_code = opcode_page == 3'd0 ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
-wire            is_arith_eval_op = arith_code > 4'h9 || arith_code == 4'h0; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE, or 0(move)?
+wire            is_arith_eval_op = arith_code > 4'h9; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE?
 wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]};
 
 //END OF INSTRUCTION
@@ -155,8 +170,8 @@ wire            mc_end_of_instruction = mc_next_bus_acc == RD4 && !(mc_type == M
 //////  TIMING GENERATOR
 ////
 
-reg             soft_halt_flag, soft_stop_flag, hard_stop_flag;
-wire            sr_stop = soft_halt_flag | soft_stop_flag | hard_stop_flag;
+reg             halt_flag, soft_stop_flag, hard_stop_flag;
+wire            sr_stop = halt_flag | soft_stop_flag | hard_stop_flag;
 
 reg     [11:0]  timing_sr;
 reg     [1:0]   current_bus_acc;
@@ -223,17 +238,13 @@ wire    [10:0]  irq_mask_n; //interrupt mask register: (MSB)empty, full, adc, nc
 reg             irq_enabled;
 
 //interrupt sources(wire)
-wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC, is_BUFFULL, is_BUFEMPTY;
-wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is_CNTR0, is_nINT2, is_pINT1, is_TIMER1, is_TIMER0, is_NMI};
+wire            is_NMI, is_TIMER0, is_TIMER1, is_pINT1, is_nINT2, is_CNTR0, is_CNTR1, is_nCNTRCIN, is_ADC; //implemented
+wire            is_BUFFULL, is_BUFEMPTY; //not yet implemented
 
-assign is_TIMER0 = 1'b0;
-assign is_TIMER1 = 1'b0;
-assign is_CNTR0 = 1'b0;
-assign is_CNTR1 = 1'b0;
-assign is_nCNTRCIN = 1'b0;
-assign is_ADC = 1'b0;
 assign is_BUFFULL = 1'b0;
 assign is_BUFEMPTY = 1'b0;
+
+wire    [10:0]  is = {is_BUFEMPTY, is_BUFFULL, is_ADC, is_nCNTRCIN, is_CNTR1, is_CNTR0, is_nINT2, is_pINT1, is_TIMER1, is_TIMER0, is_NMI};
 
 //interrupt sampler, note that interrupt sampler uses an independent divided clock
 IKA87AD_irqsampler u_nmi_sampler   (mrst_n, emuclk, mcuclk_pcen, ~i_NMI_n, is_NMI);
@@ -241,8 +252,11 @@ IKA87AD_irqsampler u_pint1_sampler (mrst_n, emuclk, mcuclk_pcen, i_INT1, is_pINT
 IKA87AD_irqsampler u_nint2_sampler (mrst_n, emuclk, mcuclk_pcen, ~i_INT2_n, is_nINT2);
 
 //interrupt flags
-wire    [10:0]  iflag; 
-assign iflag[10:5] = 6'd0;
+wire    [10:0]  iflag; //interrupt flag
+wire    [6:0]   eflag; //exception flag
+
+assign iflag[10:9] = 2'b00; //not implemented
+
 /*
 wire            iflag_NMI       = iflag[0]; //nNMI physical pin input, takes maximum 10us to suppress glitch
 wire            iflag_TIMER0    = iflag[1]; //timer 0/1 match interrupt
@@ -304,6 +318,18 @@ IKA87AD_iflag u_int1        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[3], irq
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[3]);
 IKA87AD_iflag u_int2        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[4], irq_mask_n[4], 5'd4, reg_OPCODE[4:0], 
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[4]);
+
+//Event counter
+IKA87AD_iflag u_cntr0       (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[5], irq_mask_n[5], 5'd5, reg_OPCODE[4:0], 
+                            &{irq_mask_n[6:5]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd4, iflag[5]);
+IKA87AD_iflag u_cntr1       (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[6], irq_mask_n[6], 5'd6, reg_OPCODE[4:0], 
+                            &{irq_mask_n[6:5]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd4, iflag[6]);
+
+//CI input/ADC
+IKA87AD_iflag u_ci          (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[7], irq_mask_n[7], 5'd7, reg_OPCODE[4:0], 
+                            &{irq_mask_n[8:7]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd3, iflag[7]);
+IKA87AD_iflag u_adc         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[8], irq_mask_n[8], 5'd8, reg_OPCODE[4:0], 
+                            &{irq_mask_n[8:7]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd3, iflag[8]);
 
 //interrupt generation
 reg     [2:0]   irq_lv_z;
@@ -378,17 +404,24 @@ end
 reg             iflag_muxed;
 always @(*) begin
     case(reg_OPCODE[4:0])
-        5'h0: iflag_muxed = nmi_n_z;
-        5'h1: iflag_muxed = iflag[1];
-        5'h2: iflag_muxed = iflag[2];
-        5'h3: iflag_muxed = iflag[3];
-        5'h4: iflag_muxed = iflag[4];
-        5'h5: iflag_muxed = iflag[5];
-        5'h6: iflag_muxed = iflag[6];
-        5'h7: iflag_muxed = iflag[7];
-        5'h8: iflag_muxed = iflag[8];
-        5'h9: iflag_muxed = iflag[9];
-        5'hA: iflag_muxed = iflag[10];
+        5'h00: iflag_muxed = nmi_n_z;
+        5'h01: iflag_muxed = iflag[1];
+        5'h02: iflag_muxed = iflag[2];
+        5'h03: iflag_muxed = iflag[3];
+        5'h04: iflag_muxed = iflag[4];
+        5'h05: iflag_muxed = iflag[5];
+        5'h06: iflag_muxed = iflag[6];
+        5'h07: iflag_muxed = iflag[7];
+        5'h08: iflag_muxed = iflag[8];
+        5'h09: iflag_muxed = iflag[9];
+        5'h0A: iflag_muxed = iflag[10];
+        5'h0B: iflag_muxed = eflag[0];
+        5'h0C: iflag_muxed = eflag[1];
+        5'h10: iflag_muxed = eflag[2];
+        5'h11: iflag_muxed = eflag[3];
+        5'h12: iflag_muxed = eflag[4];
+        5'h13: iflag_muxed = eflag[5];
+        5'h14: iflag_muxed = eflag[6];
         default: iflag_muxed = 1'b0;
     endcase
 end
@@ -434,7 +467,7 @@ always @(posedge emuclk) begin
         if(mcuclk_pcen) begin
             hstop_osc_unstable_z <= hstop_osc_unstable;
 
-            if(stop_syncchain) begin
+            if(stop_syncchain[1]) begin
                 hstop_osc_unstable <= 1'b1;
             end
             else begin
@@ -458,22 +491,23 @@ always @(posedge emuclk) begin
 end
 
 //halt and stop, can be halt insturction without stopping chip's oscillator, this core will stop the timing generator
+wire            release_soft_stop;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        soft_halt_flag <= 1'b0;
+        halt_flag <= 1'b0;
         soft_stop_flag <= 1'b0;
         hard_stop_flag <= 1'b0;
     end
     else begin
-        if(soft_halt_flag) begin
-            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) soft_halt_flag <= 1'b0;
+        if(halt_flag) begin
+            if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) halt_flag <= 1'b0;
         end
         else begin
-            if(cycle_tick) if(soft_halt_detected) soft_halt_flag <= 1'b1;
+            if(cycle_tick) if(soft_halt_detected) halt_flag <= 1'b1;
         end
         
         if(soft_stop_flag) begin
-            
+            if(mcuclk_pcen) if(release_soft_stop) soft_stop_flag <= 1'b0;
         end
         else begin
             if(cycle_tick) if(soft_stop_detected) soft_stop_flag <= 1'b1;
@@ -482,10 +516,10 @@ always @(posedge emuclk) begin
         //According to the datasheet on page 178, if RST is asserted before the oscillator has stabilized,
         //the CPU core will start the program from 0x0000 without waiting for stabilization. I emulated that.
         if(hard_stop_flag) begin
-            if(mcuclk_pcen) hard_stop_flag <= hstop_osc_unstable == 1'b1;
+            if(mcuclk_pcen) hard_stop_flag <= hstop_osc_unstable == 1'b0 && hstop_osc_unstable_z == 1'b1 ? 1'b0 : 1'b1; //release stop
         end
         else begin
-            if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_syncchain;
+            if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_syncchain[1];
         end
     end
 end
@@ -515,10 +549,9 @@ always @(posedge emuclk) begin
     end
 end
 
-//microcode address counter
+//microsequencer
 localparam WAIT_FOR_DECODING = 1'b0;
 localparam RUNNING = 1'b1;
-
 reg             mseq_state;      //microsequencer state
 reg     [3:0]   mseq_susp_timer; //microsequencer suspension timer
 reg     [2:0]   mseq_cntr;       //microsequencer counter, registered output
@@ -565,7 +598,7 @@ always @(*) begin
         else mseq_cntr_next = mseq_cntr;
     end
     else if(mc_type == MCTYPE3 && mc_s_bra_on_alu != 3'd0 ) begin
-        if(is_arith_eval_op) mseq_cntr_next = mseq_cntr + mc_s_bra_on_alu + 3'd1;
+        if(is_arith_eval_op || arith_code == 4'h0) mseq_cntr_next = mseq_cntr + mc_s_bra_on_alu + 3'd1; //eval op + 00(move)
         else mseq_cntr_next = mseq_cntr + 3'd1;
     end
     else begin
@@ -953,11 +986,6 @@ wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
 //////  REGISTER FILE
 ////
 
-/*
-    TODO
-    인터럽트 샘플링 시 RD4 3사이클(36 x mcupcen)동안 신호가 유지되어야함, 2 x mcupcen동안 뭔가 시프트
-*/
-
 //
 //  General purpose registers
 //
@@ -995,6 +1023,7 @@ reg     [7:0]   regpair_EAH[0:1], regpair_EAL[0:1],
                 regpair_H[0:1]  , regpair_L[0:1]  ;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
+        //GPRs remain in undefined status after reset
         regpair_EAH[0] <= 8'h00; regpair_EAH[1] <= 8'h00;
         regpair_EAL[0] <= 8'h00; regpair_EAL[1] <= 8'h00;
         regpair_V[0] <= 8'h00; regpair_V[1] <= 8'h00;
@@ -1098,7 +1127,7 @@ always @(posedge emuclk) begin
     //REGISTERS
     if(!mrst_n) begin
         reg_PC <= 16'hFFFF;
-        reg_SP <= 16'h0000;
+        reg_SP <= 16'h0000; //undefined after reset
         reg_MA <= 16'h0000;
         reg_TEMP <= 16'h0000;
     end
@@ -1165,7 +1194,7 @@ end
      w 0x06 MKH - Mask High(D[7:1])
      w 0x07 MKL - Mask Low(D[1:0])
     rw 0x08 ANM - ADC Mode(D[4:0], 0x00 after reset)
-    rw 0x09 SMH - Serial Mode High(0x00 after reset)
+    rw 0x09 SMH - Serial Mode High(0x00 after reset) 
      w 0x0A SML - Serial Mode Low(0x48 after reset)
     rw 0x0B EOM - Timer/event counter output mode
      w 0x0C ETMM - Timer/event counter mode
@@ -1208,33 +1237,103 @@ always @(*) begin
 end
 
 //port related register
-reg     [7:0]   sreg_PAO, sreg_PBO, sreg_PCO, sreg_PDO, sreg_PFO; //undefined after reset
+reg     [7:0]   sreg_PAO, sreg_PBO, sreg_PCO, sreg_PDO, sreg_PFO; //undefined after reset, see page 180
 reg     [7:0]   sreg_MA, sreg_MB, sreg_MC, sreg_MF, sreg_MM, sreg_MCC;
 
 reg     [6:0]   sreg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
 reg     [2:0]   sreg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
-assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b0};
 
+reg     [4:0]   sreg_ANM; //ADC settings
+
+reg     [7:0]   sreg_SMH, sreg_SML; //serial interface settings
+
+reg     [7:0]   sreg_EOM;
+reg     [7:0]   sreg_ETMM;
+reg     [7:0]   sreg_TMM;
+reg     [7:0]   sreg_TM0, sreg_TM1; //undefined after reset, see page 180
+
+reg     [1:0]   sreg_ZCM;
+
+reg     [15:0]  sreg_ETM0, sreg_ETM1; //undefined after reset, see page 180
+
+reg     [7:0]   sreg_CR[0:3];
+
+assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b0};
+assign o_REG_MM = sreg_MM;
+
+reg     [7:0]   sreg_RDBUS;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         sreg_PAO <= 8'h00; sreg_PBO <= 8'h00; sreg_PCO <= 8'h00; sreg_PDO <= 8'h00; sreg_PFO <= 8'h00;
-        sreg_MA  <= 8'hFF; sreg_MB  <= 8'hFF; sreg_MC  <= 8'hFF; sreg_MM  <= 8'h00; sreg_MF  <= 8'hFF;
+        sreg_MA  <= 8'hFF; sreg_MB  <= 8'hFF; sreg_MC  <= 8'hFF; sreg_MF  <= 8'hFF; sreg_MM  <= 8'h00;
         sreg_MCC <= 8'h00;
-
-
-        sreg_MKL <= 7'b1110000;
-        sreg_MKH <= 3'b111;
+        sreg_MKL <= 7'b1111111; sreg_MKH <= 3'b111;
+        sreg_ANM <= 5'h00;
+        sreg_SMH <= 8'h00; sreg_SML <= 8'h48;
+        sreg_EOM <= 8'h00;
+        sreg_ETMM <= 8'h00;
+        sreg_TMM <= 8'hFF;
+        sreg_TM0 <= 8'h00; sreg_TM1 <= 8'h00; //see page 79
+        sreg_ZCM <= 2'b11; //see page 59
+        sreg_ETM0 <= 16'h0000; sreg_ETM1 <= 16'h0000;
     end
-    else begin if(cycle_tick) begin
-        case(sr_wr_addr) 
-            6'h00: sreg_PAO <= alu_output[7:0];
-            6'h01: sreg_PBO <= alu_output[7:0];
-            6'h02: sreg_PCO <= alu_output[7:0];
-            6'h03: sreg_PDO <= alu_output[7:0];
-            6'h05: sreg_PFO <= alu_output[7:0];
-            
-        endcase 
-    end end
+    else begin 
+        if(cycle_tick) begin
+            case(sr_wr_addr) 
+                6'h00: sreg_PAO <= alu_output[7:0];
+                6'h01: sreg_PBO <= alu_output[7:0];
+                6'h02: sreg_PCO <= alu_output[7:0];
+                6'h03: sreg_PDO <= alu_output[7:0];
+                6'h05: sreg_PFO <= alu_output[7:0];
+                6'h06: sreg_MKH <= alu_output[2:0];
+                6'h07: sreg_MKL <= alu_output[7:1];
+                6'h08: sreg_ANM <= alu_output[4:0];
+                6'h09: sreg_SMH <= alu_output[7:0];
+                6'h0A: sreg_SML <= alu_output[7:0];
+                6'h0B: sreg_EOM <= alu_output[7:0];
+                6'h0C: sreg_ETMM <= alu_output[7:0];
+                6'h0D: sreg_TMM <= alu_output[7:0];
+                6'h10: sreg_MM <= alu_output[7:0];
+                6'h11: sreg_MCC <= alu_output[7:0];
+                6'h12: sreg_MA <= alu_output[7:0];
+                6'h13: sreg_MB <= alu_output[7:0];
+                6'h14: sreg_MC <= alu_output[7:0];
+                6'h17: sreg_MF <= alu_output[7:0];
+                6'h18: ; //TxB, not implemented
+                6'h1A: sreg_TM0 <= alu_output[7:0];
+                6'h1B: sreg_TM1 <= alu_output[7:0];
+                6'h28: sreg_ZCM <= alu_output[2:1];
+                6'h30: sreg_ETM0 <= alu_output[15:0];
+                6'h31: sreg_ETM1 <= alu_output[15:0];
+                default: ;
+            endcase 
+        end 
+        else if(mcuclk_pcen) begin
+            if(release_soft_stop) sreg_TMM <= 8'hFF;
+        end
+    end
+end
+
+always @(*) begin
+    case(sr_rd_addr) 
+            6'h00: sreg_RDBUS = i_PA_I;
+            6'h01: sreg_RDBUS = i_PB_I;
+            6'h02: sreg_RDBUS = i_PC_I;
+            6'h03: sreg_RDBUS = i_PD_I; 
+            6'h05: sreg_RDBUS = i_PF_I;
+            6'h08: sreg_RDBUS = {3'b000, sreg_ANM};
+            6'h09: sreg_RDBUS = sreg_SMH;
+            6'h0B: sreg_RDBUS = sreg_EOM;
+            6'h0D: sreg_RDBUS = sreg_TMM;
+            6'h19: sreg_RDBUS = 8'h00; //RxB, not implemented
+            6'h20: sreg_RDBUS = sreg_CR[0];
+            6'h21: sreg_RDBUS = sreg_CR[1];
+            6'h22: sreg_RDBUS = sreg_CR[2];
+            6'h23: sreg_RDBUS = sreg_CR[3];
+            6'h32: sreg_RDBUS = 8'h00; //ECNT, not yet implemented
+            6'h33: sreg_RDBUS = 8'h00; //ECPT, not yet implemented
+            default: sreg_RDBUS = 8'h00;
+    endcase 
 end
 
 
@@ -1368,8 +1467,8 @@ end
 
 //address high, multiplexed address low/byte data output
 wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MDH : reg_MDL;
-wire    [7:0]   addr_hi_out = memory_access_address[15:8];
-wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
+//wire    [7:0]   addr_hi_out = memory_access_address[15:8];
+//wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
 
 //address/data output
 assign  o_A = memory_access_address;
@@ -1529,7 +1628,7 @@ always @(*) begin
 end
 
 //rpa addressing
-reg     [15:0]   reg_RPA1, reg_RPA, reg_RPA2, reg_RPA2_OFFSET;
+reg     [15:0]   reg_RPA, reg_RPA2, reg_RPA2_OFFSET;
 always @(*) begin
     //rpa, including auto inc/dec
     case(reg_OPCODE[2:0])
@@ -1581,9 +1680,9 @@ always @(*) begin
             SA_DST_RP2    : alu_pa = reg_RP2;
             SA_DST_RP     : alu_pa = reg_RP;
             SA_DST_RP1    : alu_pa = reg_RP1;
-            SA_DST_SR_SR1 : alu_pa = 16'h0000; //to be fixed
-            SA_DST_SR2    : alu_pa = 16'h0000; //to be fixed
-            SA_DST_SR3    : alu_pa = 16'h0000; //to be fixed
+            SA_DST_SR_SR1 : alu_pa = sreg_RDBUS;
+            SA_DST_SR2    : alu_pa = sreg_RDBUS;
+            SA_DST_SR3    : alu_pa = sreg_RDBUS;
             SA_DST_MDL    : alu_pa = {8'h00, reg_MDL};
             SA_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
             SA_DST_MA     : alu_pa = reg_MA;
@@ -1602,9 +1701,9 @@ always @(*) begin
             SB_RP2        : alu_pb = reg_RP2;
             SB_RP         : alu_pb = reg_RP;
             SB_RP1        : alu_pb = reg_RP1;
-            SB_SR_SR1     : alu_pb = 16'h0000; //to be fixed
-            SB_SR2        : alu_pb = 16'h0000; //to be fixed
-            SB_SR4        : alu_pb = 16'h0000; //to be fixed
+            SB_SR_SR1     : alu_pb = sreg_RDBUS;
+            SB_SR2        : alu_pb = sreg_RDBUS;
+            SB_SR4        : alu_pb = sreg_RDBUS;
             SB_MDH        : alu_pb = {8'h00, reg_MDH};
             SB_MD         : alu_pb = {reg_MDH, reg_MDL};
             SB_MDI        : alu_pb = reg_MDI;
@@ -1622,7 +1721,7 @@ always @(*) begin
             SB_ADD1       : alu_pb = 16'h0001;
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
-            SB_RPA1       : alu_pb = reg_RPA;
+            SB_RPA        : alu_pb = reg_RPA;
             SB_RPA2       : alu_pb = reg_RPA2;
             SB_OFFSET     : alu_pb = reg_RPA2_OFFSET;
             default       : alu_pb = 16'h0000;
@@ -1992,7 +2091,10 @@ always @(*) begin
     z_comb = flag_Z;
 
     if(mc_type == MCTYPE0) begin
-        if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00;
+        if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
+            if(is_arith_eval_op) z_comb = data_w_nb ? alu_temp_output == 16'h0000 : alu_temp_output[7:0] == 8'h00;
+            else                 z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00;
+        end
     end
     else if(mc_type == MCTYPE1) begin
              if(mc_t1_alusel == 4'h2) z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00; //DAA
@@ -2309,8 +2411,283 @@ assign o_PF_O = sreg_PFO;
 
 
 
+///////////////////////////////////////////////////////////
+//////  DIV3 TICK GENERATOR
+////
+
+reg     [1:0]   div3_tick_cntr;
+wire            div3_tick = div3_tick_cntr == 2'd2 && mcuclk_pcen;
+always @(posedge emuclk) begin
+    if(!mrst_n) div3_tick_cntr <= 2'd0;
+    else begin if(mcuclk_pcen) begin
+        div3_tick_cntr <= div3_tick_cntr == 2'd2 ? 2'd0 : div3_tick_cntr + 2'd1;
+    end end
+end
 
 
 
+///////////////////////////////////////////////////////////
+//////  ADC DATA ACQUISITION CONTROL
+////
+
+reg     [4:0]   current_adc_mode;
+reg     [7:0]   adc_state_cntr;
+reg     [2:0]   adc_ch;
+reg             adc_strobe_n;
+
+assign o_ADC_CH = current_adc_mode[0] ? current_adc_mode[3:1] : adc_ch;
+assign o_ADC_RD_n = adc_strobe_n;
+assign is_ADC = current_adc_mode[4] ? div3_tick_cntr == 2'd2 && adc_state_cntr == 8'd127 && adc_ch[1:0] == 2'b11: 
+                                      div3_tick_cntr == 2'd2 && adc_state_cntr == 8'd175 && adc_ch[1:0] == 2'b11;
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        current_adc_mode <= 5'b00000;
+        adc_state_cntr <= 8'd0;
+        adc_ch <= 3'd0;
+    end
+    else begin if(div3_tick) begin
+        if(( current_adc_mode[4] && adc_state_cntr == 8'd143) || 
+           (~current_adc_mode[4] && adc_state_cntr == 8'd191)) begin
+
+            //make a copy of the current ANM reg value
+            current_adc_mode <= sreg_ANM;
+
+            //scan mode/single ch mode select
+            if(sreg_ANM[0] != current_adc_mode[0]) adc_ch <= {sreg_ANM[3], 2'b00}; //if the mode has been changed, initialize the counter
+            else adc_ch[1:0] <= adc_ch[1:0] == 2'b11 ? 2'b00 : adc_ch[1:0] + 2'b01; //count up
+
+            //reset the adc state counter
+            adc_state_cntr <= 8'd0;
+        end
+        else begin
+            adc_state_cntr <= adc_state_cntr + 8'd1;
+        end
+
+        //data acquisition control
+        if(adc_state_cntr == 8'd0) adc_strobe_n <= 1'b0;
+        else if(adc_state_cntr == 8'd127) begin
+            adc_strobe_n <= current_adc_mode[4] ? 1'b1 : 1'b0;
+            if(current_adc_mode[4]) sreg_CR[adc_ch[1:0]] <= i_ANx_ANALOG_DATA;
+        end
+        else if(adc_state_cntr == 8'd175) begin
+            adc_strobe_n <= current_adc_mode[4] ? 1'b0 : 1'b1;
+            if(~current_adc_mode[4]) sreg_CR[adc_ch[1:0]] <= i_ANx_ANALOG_DATA;
+        end
+    end end
+end
+
+
+
+///////////////////////////////////////////////////////////
+//////  TIMER
+////
+
+//tick from an external source
+wire            ti_nedet;
+IKA87AD_nedet nedet_ti (mrst_n, emuclk, div3_tick, i_TI, ti_nedet);
+
+//make timer ticks
+reg     [1:0]   timer_prescaler;
+reg     [6:0]   timer_div_cntr;
+wire            timer_tick   = timer_prescaler == 2'd2 & mcuclk_pcen; //fs/3 tick
+wire            timer_div12  = timer_div_cntr[1:0] == 2'd3;
+wire            timer_div384 = timer_div_cntr == 7'd127;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        timer_prescaler <= 2'd0;
+        timer_div_cntr <= 7'd0;
+    end
+    else begin if(mcuclk_pcen) begin
+        if(hard_stop_flag || (soft_stop_flag && !iflag[0])) begin //stop timer
+            timer_prescaler <= timer_prescaler;
+            timer_div_cntr <= timer_div_cntr;
+        end
+        else begin
+            timer_prescaler <= timer_prescaler == 2'd2 ? 2'd0 : timer_prescaler + 2'd1;
+            if(timer_prescaler == 2'd2) timer_div_cntr <= timer_div_cntr == 7'd127 ? 7'd0 : timer_div_cntr + 7'd1;
+        end
+    end end
+end
+
+//timer 0/1
+reg     [7:0]   timer0, timer1; //timer registersx`
+reg             tmff; 
+reg             timer0_cnt, timer1_cnt, tmff_toggle; //timer0/1 and tmff ticks
+wire            timer0_match = timer0_cnt & (timer0 == sreg_TM0) & (sr_wr_addr != 6'h1A); //this tick pokes the next DFFs
+wire            timer1_match = timer1_cnt & (timer1 == sreg_TM1) & (sr_wr_addr != 6'h1B);
+wire            tmff_pcen = tmff_toggle & (tmff == 1'b0) & timer_tick; //TMFF postive edge clock enable
+wire            tmff_ncen = (tmff_toggle & (tmff == 1'b1) & timer_tick) | 
+                            ((sreg_TMM[1:0] == 2'b11) & (tmff == 1'b1) & timer_tick); //TMFF negative edge clock enable
+assign is_TIMER0 = ~soft_stop_flag & timer0_match & timer_tick;
+assign is_TIMER1 = ~soft_stop_flag & timer1_match & timer_tick;
+assign release_soft_stop = soft_stop_flag & timer1_match & timer_tick; //release soft stop
+assign o_TO = tmff;
+always @(*) begin
+    case(sreg_TMM[3:2])
+        2'b00: timer0_cnt = timer_div12;
+        2'b01: timer0_cnt = timer_div384;
+        2'b10: timer0_cnt = ti_nedet;
+        2'b11: timer0_cnt = 1'b0;
+    endcase
+
+    case(sreg_TMM[6:5])
+        2'b00: timer1_cnt = timer_div12;
+        2'b01: timer1_cnt = timer_div384;
+        2'b10: timer1_cnt = ti_nedet;
+        2'b11: timer1_cnt = timer0_match;
+    endcase
+
+    case(sreg_TMM[1:0])
+        2'b00: tmff_toggle = timer0_match;
+        2'b01: tmff_toggle = timer1_match;
+        2'b10: tmff_toggle = 1'b1; //toggle at every timer_tick(fs/3)
+        2'b11: tmff_toggle = 1'b0; //reset
+    endcase
+end
+
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        timer0 <= 8'h01;
+        timer1 <= 8'h01;
+        tmff <= 1'b0;
+    end
+    else if(soft_stop_flag && !iflag[0]) begin //timer 0 and 1 can be used as a soft stop release wait timer, NMI triggered
+        timer0 <= 8'h01;
+        timer1 <= 8'h01;
+    end
+    else begin if(timer_tick) begin //use timer tick(fs/3)
+        //define timer 0 behavior
+        if(sreg_TMM[4]) timer0 <= 8'h01;
+        else begin
+            if(timer0_cnt) begin
+                if(timer0 == sreg_TM0 && sr_wr_addr != 6'h1A) timer0 <= 8'h01; //no comparison is performed while updating TM0, see datasheet p79
+                else timer0 <= timer0 == 8'hFF ? 8'h00 : timer0 + 8'h01;
+            end
+        end
+
+        //define timer 1 behavior
+        if(sreg_TMM[7]) timer1 <= 8'h01;
+        else begin
+            if(timer1_cnt) begin
+                if(timer1 == sreg_TM1 && sr_wr_addr != 6'h1B) timer1 <= 8'h01; //no comparison is performed while updating TM1
+                else timer1 <= timer1 == 8'hFF ? 8'h00 : timer1 + 8'h01;
+            end
+        end
+
+        //define tmff behavior
+        if(sreg_TMM[1:0] == 2'b11) tmff <= 1'b0;
+        else begin
+            if(tmff_toggle) tmff <= ~tmff;
+        end
+    end end
+end
+
+
+
+///////////////////////////////////////////////////////////
+//////  EVENT COUNTER
+////
+
+//tick from an external source
+reg     [1:0]   ci_sampler;
+reg             ci_nedet, ci_state;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin 
+        ci_sampler <= 3'b000;
+        ci_nedet <= 1'b0;
+        ci_state <= 1'b0;
+    end
+    else begin if(div3_tick) begin
+        ci_sampler[0] <= i_CI;
+        ci_sampler[1] <= ci_sampler[0];
+
+        if(ci_sampler == 2'b10 && i_CI == 1'b0) ci_nedet <= 1'b1;
+        else ci_nedet <= 1'b0;
+
+        if(ci_sampler == 2'b10 && i_CI == 1'b0) ci_state <= 1'b0;
+        else if(ci_sampler == 2'b01 && i_CI == 1'b1) ci_state <= 1'b1;
+        else ci_state <= ci_state;
+    end end
+end
+
+//event counter
+reg             event_cntr_cnt;
+always @(*) begin
+    case(sreg_ETMM[1:0])
+        2'b00: event_cntr_cnt = timer_div12;
+        2'b01: event_cntr_cnt = timer_div12 & ci_state;
+        2'b10: event_cntr_cnt = ci_nedet;
+        2'b11: event_cntr_cnt = ci_nedet & tmff;
+    endcase
+end
+
+reg     [15:0]  event_cntr;
+wire    [16:0]  event_cntr_next = event_cntr + 16'd1;
+wire            cntr0_match = event_cntr_cnt & (event_cntr_next[15:0] == sreg_ETM0) & (sr_wr_addr != 6'h30);
+wire            cntr1_match = event_cntr_cnt & (event_cntr_next[15:0] == sreg_ETM1) & (sr_wr_addr != 6'h31);
+assign is_CNTR0 = cntr0_match & timer_tick;
+assign is_CNTR1 = cntr1_match & timer_tick;
+assign is_nCNTRCIN = ci_nedet;
+wire            fs_OV = event_cntr_next[16] & event_cntr_cnt & timer_tick;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        event_cntr <= 16'd0;
+    end
+    else begin if(timer_tick) begin 
+        case(sreg_ETMM[3:2])
+            2'b00: event_cntr <= 16'd0;
+            2'b01: event_cntr <= event_cntr_cnt ? event_cntr_next[15:0] : event_cntr;
+            2'b10: begin
+                if(sreg_ETMM[1]) begin
+                    if(tmff_ncen) event_cntr <= 16'd0;
+                    else event_cntr <= event_cntr_cnt ? event_cntr_next[15:0] : event_cntr;
+                end
+                else begin
+                    if(ci_nedet) event_cntr <= 16'd0;
+                    else event_cntr <= event_cntr_cnt ? event_cntr_next[15:0] : event_cntr;
+                end
+            end
+            2'b11: begin
+                if(event_cntr_cnt) begin
+                    if(event_cntr_next[15:0] == sreg_ETM1) event_cntr <= 16'd0;
+                    else event_cntr <= event_cntr_next[15:0];
+                end
+            end 
+        endcase
+    end end
+end
+
+
+
+///////////////////////////////////////////////////////////
+//////  MISC FLAGS
+////
+
+//ER(serial IO error)
+assign eflag[0] = 1'b0; //not implemented
+
+//OV(event counter overflow)
+IKA87AD_iflag u_nedet_ov    (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_OV, 1'b1, 5'd12, reg_OPCODE[4:0], 
+                            1'b1, iflag_manual_ack, 1'b0, eflag[1]);
+
+//AN7-4(negative edge)
+wire    [3:0]   fs_ANx;
+IKA87AD_nedet nedet_an7 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[3], fs_ANx[3]);
+IKA87AD_nedet nedet_an6 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[2], fs_ANx[2]);
+IKA87AD_nedet nedet_an5 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[1], fs_ANx[1]);
+IKA87AD_nedet nedet_an4 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[0], fs_ANx[0]);
+
+IKA87AD_iflag u_nedet_an7   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[3], 1'b1, 5'd16, reg_OPCODE[4:0], 
+                            1'b1, iflag_manual_ack, 1'b0, eflag[2]);
+IKA87AD_iflag u_nedet_an6   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[2], 1'b1, 5'd17, reg_OPCODE[4:0], 
+                            1'b1, iflag_manual_ack, 1'b0, eflag[3]);
+IKA87AD_iflag u_nedet_an5   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[1], 1'b1, 5'd18, reg_OPCODE[4:0], 
+                            1'b1, iflag_manual_ack, 1'b0, eflag[4]);
+IKA87AD_iflag u_nedet_an4   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[0], 1'b1, 5'd19, reg_OPCODE[4:0], 
+                            1'b1, iflag_manual_ack, 1'b0, eflag[5]);
+
+//SB(first boot flag)
+assign eflag[6] = 1'b0; //not implemented
 
 endmodule

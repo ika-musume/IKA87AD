@@ -240,13 +240,13 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         MOV_A_R1        : mc <= {MCTYPE0, 1'b0, 1'b1, SB_R1, SA_DST_A, 2'b00, RD4};                     //A<-r1, RD4
 
-        MUL             : mc <= {MCTYPE1, 1'b0, 1'b1, SD_NOSOURCE, SC_DST_EA, 4'b0100, IDLE};           //EA<-A*r2, IDLE
+        MUL             : mc <= {MCTYPE1, 1'b0, 1'b1, SD_R2, SC_DST_EA, 4'b0100, IDLE};                 //EA<-A*r2, IDLE
         MUL+1           : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10110, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop*7, IDLE
         MUL+2           : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
 
         DMOV_RP_EA      : mc <= {MCTYPE0, 1'b0, 1'b1, SB_RP, SA_DST_EA, 2'b00, RD4};                    //rp<-EA, RD4
 
-        DIV             : mc <= {MCTYPE1, 1'b0, 1'b1, SD_NOSOURCE, SC_DST_EA, 4'b0101, IDLE};           //EA<-EA/r2, IDLE
+        DIV             : mc <= {MCTYPE1, 1'b0, 1'b1, SD_R2, SC_DST_EA, 4'b0101, IDLE};                 //EA<-EA/r2, IDLE
         DIV+1           : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b11111, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop*16, IDLE
         DIV+2           : mc <= {MCTYPE0, 1'b0, 1'b0, SB_TEMP, SA_DST_R2, 2'b00, RD4};                  //r2<-ALU temp, RD4
 

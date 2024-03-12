@@ -304,31 +304,31 @@ always @(*) begin
 end
 
 //NMI interrupt flag set/reset
-IKA87AD_iflag u_nmi         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[0], 1'b1, 5'd0, reg_OPCODE[4:0], 
+IKA87AD_flag u_nmi          (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[0], 1'b1, 5'd0, reg_OPCODE[4:0], 
                             1'b0, 1'b0, iflag_auto_ack && irq_lv == 3'd7, iflag[0]);
 
 //Timer0/1 interrupt flag set/reset
-IKA87AD_iflag u_timer0      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[1], irq_mask_n[1], 5'd1, reg_OPCODE[4:0], 
+IKA87AD_flag u_timer0       (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[1], irq_mask_n[1], 5'd1, reg_OPCODE[4:0], 
                             &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[1]);
-IKA87AD_iflag u_timer1      (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[2], irq_mask_n[2], 5'd2, reg_OPCODE[4:0], 
+IKA87AD_flag u_timer1       (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[2], irq_mask_n[2], 5'd2, reg_OPCODE[4:0], 
                             &{irq_mask_n[2:1]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd6, iflag[2]);
 
 //Pin interrupt flag set/reset
-IKA87AD_iflag u_int1        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[3], irq_mask_n[3], 5'd3, reg_OPCODE[4:0], 
+IKA87AD_flag u_int1         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[3], irq_mask_n[3], 5'd3, reg_OPCODE[4:0], 
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[3]);
-IKA87AD_iflag u_int2        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[4], irq_mask_n[4], 5'd4, reg_OPCODE[4:0], 
+IKA87AD_flag u_int2         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[4], irq_mask_n[4], 5'd4, reg_OPCODE[4:0], 
                             &{irq_mask_n[4:3]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd5, iflag[4]);
 
 //Event counter
-IKA87AD_iflag u_cntr0       (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[5], irq_mask_n[5], 5'd5, reg_OPCODE[4:0], 
+IKA87AD_flag u_cntr0        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[5], irq_mask_n[5], 5'd5, reg_OPCODE[4:0], 
                             &{irq_mask_n[6:5]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd4, iflag[5]);
-IKA87AD_iflag u_cntr1       (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[6], irq_mask_n[6], 5'd6, reg_OPCODE[4:0], 
+IKA87AD_flag u_cntr1        (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[6], irq_mask_n[6], 5'd6, reg_OPCODE[4:0], 
                             &{irq_mask_n[6:5]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd4, iflag[6]);
 
 //CI input/ADC
-IKA87AD_iflag u_ci          (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[7], irq_mask_n[7], 5'd7, reg_OPCODE[4:0], 
+IKA87AD_flag u_ci           (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[7], irq_mask_n[7], 5'd7, reg_OPCODE[4:0], 
                             &{irq_mask_n[8:7]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd3, iflag[7]);
-IKA87AD_iflag u_adc         (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[8], irq_mask_n[8], 5'd8, reg_OPCODE[4:0], 
+IKA87AD_flag u_adc          (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[8], irq_mask_n[8], 5'd8, reg_OPCODE[4:0], 
                             &{irq_mask_n[8:7]}, iflag_manual_ack, iflag_auto_ack && irq_lv == 3'd3, iflag[8]);
 
 //interrupt generation
@@ -641,8 +641,8 @@ IKA87AD_microcode u_microcode (
         00011: (w) rp2, OPCODE[]
         00100: (w) rp, OPCODE[]
         00101: (w) rp1, OPCODE[]
-        00110: (b) sr/sr1, OPCODE[]
-        00111: () sr2, OPCODE[]
+        00110: (w) RPA*
+        00111: (w) RPA2*
         01000: () sr4, OPCODE[0]
         01001: (b) MD_high_byte
         01010: (w) MD_word
@@ -664,8 +664,8 @@ IKA87AD_microcode u_microcode (
         11010: (w) 1
         11011: (w) 2
         11100: (w) ALU temp register 
-        11101: (w) *RPA1
-        11110: (w) *RPA2
+        11101: (b) sr/sr1, OPCODE[]
+        11110: () sr2, OPCODE[]
         11111: (w) *RPA_OFFSET, rpa2/rpa3 A, B, EA, byte addend select
     D[8:4] source A, destination register type, decoded by the external circuit, :
         00000: (b) r, OPCODE[]         
@@ -674,17 +674,17 @@ IKA87AD_microcode u_microcode (
         00011: (w) rp2, OPCODE[]
         00100: (w) rp, OPCODE[]
         00101: (w) rp1, OPCODE[]
-        00110: () sr/sr1, OPCODE[]
-        00111: () sr2, OPCODE[]
+        00110: (b) C 
+        00111: (w) SP
         01000: () sr3, OPCODE[0]
         01001: (b) MD_low_byte
         01010: (w) MD_word
         01011: (w) MA
         01100: (w) PC
-        01101: (w) SP
-        01110: (b) A 
-        01111: (w) EA
-        10000: (b) C 
+        01101:     sr/sr1, OPCODE[]
+        01110:     sr2, OPCODE[]
+        01111: (b) A
+        10000: (w) EA 
         10001:
         10010:
         10011:
@@ -719,39 +719,39 @@ IKA87AD_microcode u_microcode (
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13:10] source D
-    0000: A
-    0001: EA
-    0010: BC
-    0011: DE
-    0100: HL
-    0101: MD_high_byte
-    0110: MD_word
-    0111: PC
-    1000: SP
-    1001: PSW
-    1010: NO_SOURCE
-    1011:
-    1100: 
-    1101: 
-    1110:
-    1111: (w) *RPA
-    D[9:6] source C, destination
-    0000: (b) r2
-    0001: (b) A
-    0010: (w) EA
-    0011: (b) MD_low_byte
-    0100  (b) MD_high_byte
-    0101: (w) MD_word
-    0110: (w) MA
-    0111: (b) PSW
-    1000: (w) BC
-    1001:     PC
-    1010:     
-    1011: 
-    1100: 
-    1101: 
+    0000: BC
+    0001: DE
+    0010: HL
+    0011: SP
+    0100: RPA
+    0101:
+    0110:
+    0111:
+    1000: A
+    1001: EA
+    1010: MD_high_byte
+    1011: MD_word
+    1100: PC
+    1101: PSW
     1110: 
-    1111:     NOWHERE
+    1111: NO_SOURCE
+    D[9:6] source C, destination
+    0000: (w) BC
+    0001: (b) r2
+    0010:     
+    0011: 
+    0100: 
+    0101: 
+    0110: 
+    0111:     NOWHERE
+    1000: (b) A
+    1001: (w) EA
+    1010: (b) MD_low_byte
+    1011  (b) MD_high_byte
+    1100: (w) MD_word
+    1101: (w) MA
+    1110: (b) PSW
+    1111:     PC
 
     D[5:2] ALU operation type:
     0000: bypass
@@ -1561,6 +1561,195 @@ end
 //////  ALU READ PORT MULTIPLEXERS
 ////
 
+/*
+    COMMON READ BUS
+    4'h0: {8'h00, reg_V} - r
+    4'h1: {8'h00, reg_A} - r
+    4'h2: {8'h00, reg_EAH} - r1
+    4'h3: {8'h00, reg_EAL} - r1
+    4'h4: {8'h00, reg_B} - common
+    4'h5: {8'h00, reg_C} - common
+    4'h6: {8'h00, reg_D} - common
+    4'h7: {8'h00, reg_E} - common
+    4'h8: {8'h00, reg_H} - common
+    4'h9: {8'h00, reg_L} - common
+    4'hA: reg_SP - rp, rp2
+    4'hB: {reg_V, reg_A} - rp1
+    4'hC: {reg_B, reg_C} - common
+    4'hD: {reg_D, reg_E} - common
+    4'hE: {reg_H, reg_L} - common
+    4'hF: {reg_EAH, reg_EAL} - common
+
+    A READ BUS
+    {8'h00, reg_A}
+
+    EA READ BUS
+    {reg_EAH, reg_EAL}
+*/
+
+//determines which fields in the microcode are used to read the register file
+reg     [2:0]   mc_regfile_acc_mode;
+always @(*) begin
+    mc_regfile_acc_mode = 3'd4;
+    
+    if(mc_type == MCTYPE0) begin
+             if(mc_sa_dst < 5'd8 && mc_sb >= 5'd8) mc_regfile_acc_mode = 3'd0; //source A uses regfile
+        else if(mc_sa_dst >= 5'd8 && mc_sb < 5'd8) mc_regfile_acc_mode = 3'd1; //source B uses regfile
+    end
+    else if(mc_type == MCTYPE1) begin
+             if(mc_sc_dst < 4'd8 && mc_sd >= 4'd8) mc_regfile_acc_mode = 3'd2; //source C uses regfile
+        else if(mc_sc_dst >= 4'd8 && mc_sd < 4'd8) mc_regfile_acc_mode = 3'd3; //source D uses regfile
+    end
+end
+
+//register file address: which register we should read?
+reg     [4:0]   regfile_addr;
+always @(*) begin
+    regfile_addr = 5'h10; //ZERO
+
+    if(mc_regfile_acc_mode[2] != 1'b1) begin
+        if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R) || 
+            (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_R)           ) begin //R type decoder
+            case(reg_OPCODE[2:0])
+                3'b000: regfile_addr = 5'h0;
+                3'b001: regfile_addr = 5'h1;
+                3'b010: regfile_addr = 5'h4;
+                3'b011: regfile_addr = 5'h5;
+                3'b100: regfile_addr = 5'h6;
+                3'b101: regfile_addr = 5'h7;
+                3'b110: regfile_addr = 5'h8;
+                3'b111: regfile_addr = 5'h9;
+            endcase
+        end
+        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R1) || 
+                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_R1)           ) begin //R1 type decoder
+            case(reg_OPCODE[2:0])
+                3'b000: regfile_addr = 5'h2;
+                3'b001: regfile_addr = 5'h3;
+                3'b010: regfile_addr = 5'h4;
+                3'b011: regfile_addr = 5'h5;
+                3'b100: regfile_addr = 5'h6;
+                3'b101: regfile_addr = 5'h7;
+                3'b110: regfile_addr = 5'h8;
+                3'b111: regfile_addr = 5'h9;
+            endcase
+        end
+        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R2) || 
+                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_R2)         ||
+                (mc_regfile_acc_mode == 3'd2 && mc_sc_dst == SC_DST_R2) ||
+                (mc_regfile_acc_mode == 3'd3 && mc_sd == SD_R2)           ) begin //R2 type decoder
+            case(reg_OPCODE[1:0])
+                2'b00: regfile_addr = 5'h0;
+                2'b01: regfile_addr = 5'h1;
+                2'b10: regfile_addr = 5'h4;
+                2'b11: regfile_addr = 5'h5;
+            endcase
+        end
+        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP2) || 
+                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RP2)           ) begin //RP2 type decoder
+            case(reg_OPCODE[6:4])
+                3'b000: regfile_addr = 5'hA;
+                3'b001: regfile_addr = 5'hC;
+                3'b010: regfile_addr = 5'hD;
+                3'b011: regfile_addr = 5'hE;
+                3'b100: regfile_addr = 5'hF;
+                default: regfile_addr = 5'h10;
+            endcase
+        end
+        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP1) || 
+                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RP1)           ) begin //RP1 type decoder
+            case(reg_OPCODE[2:0])
+                3'b000: regfile_addr = 5'hB;
+                3'b001: regfile_addr = 5'hC;
+                3'b010: regfile_addr = 5'hD;
+                3'b011: regfile_addr = 5'hE;
+                3'b100: regfile_addr = 5'hF;
+                default: regfile_addr = 5'h10;
+            endcase
+        end
+        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP) || 
+                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RP)           ) begin //RP type decoder
+            case(reg_OPCODE[1:0])
+                2'b00: regfile_addr = 5'hA;
+                2'b01: regfile_addr = 5'hC;
+                2'b10: regfile_addr = 5'hD;
+                2'b11: regfile_addr = 5'hE;
+            endcase
+        end
+        else if((mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RPA) ||
+                (mc_regfile_acc_mode == 3'd3 && mc_sd == SD_RPA)   ) begin //RPA type decoder
+            case(reg_OPCODE[2:0])
+                3'b001: regfile_addr = 5'hC;
+                3'b010: regfile_addr = 5'hD;
+                3'b011: regfile_addr = 5'hE;
+                3'b100: regfile_addr = 5'hD; //A+, use alu type 1 for auto inc/dec
+                3'b101: regfile_addr = 5'hE; //A+, use alu type 1 for auto inc/dec
+                3'b110: regfile_addr = 5'hD; //-A, use alu type 1 for auto inc/dec
+                3'b111: regfile_addr = 5'hE; //-A, use alu type 1 for auto inc/dec
+                default: regfile_addr = 5'h10;
+            endcase
+        end
+        else if(mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RPA2) begin //RPA2 type decoder
+            case(reg_OPCODE[2:0])
+                3'b011: regfile_addr = 5'hD;
+                3'b100: regfile_addr = 5'hE;
+                3'b101: regfile_addr = 5'hE;
+                3'b110: regfile_addr = 5'hE;
+                3'b111: regfile_addr = 5'hE;
+                default: regfile_addr = 5'h10;
+            endcase
+        end
+        else if(mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_C) 
+            regfile_addr = 5'h5;
+        else if(mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_SP) 
+            regfile_addr = 5'hA;
+        else if((mc_regfile_acc_mode == 3'd2 && mc_sc_dst == SC_DST_BC) || 
+                (mc_regfile_acc_mode == 3'd3 && mc_sd == SD_BC)) 
+            regfile_addr = 5'hC;
+        else if(mc_regfile_acc_mode == 3'd3 && mc_sd == SD_DE) 
+            regfile_addr = 5'hD;
+        else if(mc_regfile_acc_mode == 3'd3 && mc_sd == SD_HL) 
+            regfile_addr = 5'hE;
+        else if(mc_regfile_acc_mode == 3'd3 && mc_sd == SD_SP) 
+            regfile_addr = 5'hA;
+        else if(mc_regfile_acc_mode == 3'd4) begin
+            case(reg_OPCODE[1:0])
+                2'b00: regfile_addr = 5'h0;
+                2'b01: regfile_addr = 5'h1;
+                2'b10: regfile_addr = 5'h4;
+                2'b11: regfile_addr = 5'h5;
+            endcase
+        end
+    end
+end
+
+reg     [15:0]  reg_RDBUS;
+always @(*) begin
+    if(regfile_addr[4]) reg_RDBUS = 16'h0000;
+    else begin
+        case(regfile_addr[3:0])
+            4'h0: reg_RDBUS = {8'h00, reg_V};
+            4'h1: reg_RDBUS = {8'h00, reg_A};
+            4'h2: reg_RDBUS = {8'h00, reg_EAH};
+            4'h3: reg_RDBUS = {8'h00, reg_EAL};
+            4'h4: reg_RDBUS = {8'h00, reg_B};
+            4'h5: reg_RDBUS = {8'h00, reg_C};
+            4'h6: reg_RDBUS = {8'h00, reg_D};
+            4'h7: reg_RDBUS = {8'h00, reg_E};
+            4'h8: reg_RDBUS = {8'h00, reg_H};
+            4'h9: reg_RDBUS = {8'h00, reg_L};
+            4'hA: reg_RDBUS = reg_SP;
+            4'hB: reg_RDBUS = {reg_V, reg_A};
+            4'hC: reg_RDBUS = {reg_B, reg_C};
+            4'hD: reg_RDBUS = {reg_D, reg_E};
+            4'hE: reg_RDBUS = {reg_H, reg_L};
+            4'hF: reg_RDBUS = {reg_EAH, reg_EAL};
+        endcase
+    end
+end
+
+/*
+OLDER IMPLEMENTATION
 //r addressing
 reg     [7:0]   reg_R, reg_R2, reg_R1;
 always @(*) begin
@@ -1627,8 +1816,9 @@ always @(*) begin
     endcase
 end
 
+
 //rpa addressing
-reg     [15:0]   reg_RPA, reg_RPA2, reg_RPA2_OFFSET;
+reg     [15:0]   reg_RPA, reg_RPA2;
 always @(*) begin
     //rpa, including auto inc/dec
     case(reg_OPCODE[2:0])
@@ -1653,7 +1843,11 @@ always @(*) begin
         3'b110: reg_RPA2 = {reg_H, reg_L};
         3'b111: reg_RPA2 = {reg_H, reg_L};
     endcase
+end
+*/
 
+reg     [15:0]   reg_RPA2_OFFSET;
+always @(*) begin
     //rpa2 addend select
     case(reg_OPCODE[2:0])
         3'b000: reg_RPA2_OFFSET = 16'h0000;
@@ -1667,6 +1861,9 @@ always @(*) begin
     endcase
 end
 
+
+
+
 //ALU port A and B
 reg     [15:0]  alu_pa, alu_pb; 
 always @(*) begin
@@ -1674,12 +1871,14 @@ always @(*) begin
 
     if(mc_type == MCTYPE0) begin
         case(mc_sa_dst)
-            SA_DST_R      : alu_pa = {8'h00, reg_R};
-            SA_DST_R2     : alu_pa = {8'h00, reg_R2};
-            SA_DST_R1     : alu_pa = {8'h00, reg_R1};
-            SA_DST_RP2    : alu_pa = reg_RP2;
-            SA_DST_RP     : alu_pa = reg_RP;
-            SA_DST_RP1    : alu_pa = reg_RP1;
+            SA_DST_R      : alu_pa = reg_RDBUS; //{8'h00, reg_R};
+            SA_DST_R2     : alu_pa = reg_RDBUS; //{8'h00, reg_R2};
+            SA_DST_R1     : alu_pa = reg_RDBUS; //{8'h00, reg_R1};
+            SA_DST_RP2    : alu_pa = reg_RDBUS; //reg_RP2;
+            SA_DST_C      : alu_pa = reg_RDBUS; //{8'h00, reg_C};
+            SA_DST_SP     : alu_pa = reg_RDBUS; //reg_SP;
+            SA_DST_RP     : alu_pa = reg_RDBUS; //reg_RP;
+            SA_DST_RP1    : alu_pa = reg_RDBUS; //reg_RP1;
             SA_DST_SR_SR1 : alu_pa = sreg_RDBUS;
             SA_DST_SR2    : alu_pa = sreg_RDBUS;
             SA_DST_SR3    : alu_pa = sreg_RDBUS;
@@ -1687,20 +1886,20 @@ always @(*) begin
             SA_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
             SA_DST_MA     : alu_pa = reg_MA;
             SA_DST_PC     : alu_pa = reg_PC;
-            SA_DST_SP     : alu_pa = reg_SP;
             SA_DST_A      : alu_pa = {8'h00, reg_A};
             SA_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
-            SA_DST_C      : alu_pa = {8'h00, reg_C};
             default       : alu_pa = 16'h0000;
         endcase
 
         case(mc_sb)
-            SB_R          : alu_pb = {8'h00, reg_R};
-            SB_R2         : alu_pb = {8'h00, reg_R2};
-            SB_R1         : alu_pb = {8'h00, reg_R1};
-            SB_RP2        : alu_pb = reg_RP2;
-            SB_RP         : alu_pb = reg_RP;
-            SB_RP1        : alu_pb = reg_RP1;
+            SB_R          : alu_pb = reg_RDBUS; //{8'h00, reg_R};
+            SB_R2         : alu_pb = reg_RDBUS; //{8'h00, reg_R2};
+            SB_R1         : alu_pb = reg_RDBUS; //{8'h00, reg_R1};
+            SB_RP2        : alu_pb = reg_RDBUS; //reg_RP2;
+            SB_RP         : alu_pb = reg_RDBUS; //reg_RP;
+            SB_RP1        : alu_pb = reg_RDBUS; //reg_RP1;
+            SB_RPA        : alu_pb = reg_RDBUS; //reg_RPA;
+            SB_RPA2       : alu_pb = reg_RDBUS; //reg_RPA2;
             SB_SR_SR1     : alu_pb = sreg_RDBUS;
             SB_SR2        : alu_pb = sreg_RDBUS;
             SB_SR4        : alu_pb = sreg_RDBUS;
@@ -1721,15 +1920,14 @@ always @(*) begin
             SB_ADD1       : alu_pb = 16'h0001;
             SB_ADD2       : alu_pb = 16'h0002;
             SB_TEMP       : alu_pb = reg_TEMP;
-            SB_RPA        : alu_pb = reg_RPA;
-            SB_RPA2       : alu_pb = reg_RPA2;
             SB_OFFSET     : alu_pb = reg_RPA2_OFFSET;
             default       : alu_pb = 16'h0000;
         endcase
     end
     else if(mc_type == MCTYPE1) begin
         case(mc_sc_dst)
-            SC_DST_R2     : alu_pa = {8'h00, reg_R2};
+            SC_DST_R2     : alu_pa = reg_RDBUS; //{8'h00, reg_R2};
+            SC_DST_BC     : alu_pa = reg_RDBUS; //{reg_B, reg_C};
             SC_DST_A      : alu_pa = reg_A;
             SC_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
             SC_DST_MDL    : alu_pa = {8'h00, reg_MDL};
@@ -1737,23 +1935,22 @@ always @(*) begin
             SC_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
             SC_DST_MA     : alu_pa = reg_MA;
             SC_DST_PSW    : alu_pa = reg_PSW;
-            SC_DST_BC     : alu_pa = {reg_B, reg_C};
             SC_DST_PC     : alu_pa = reg_PC;
             default       : alu_pa = 16'h0000;
         endcase
 
         case(mc_sd)
+            SD_BC         : alu_pb = reg_RDBUS; //{reg_B, reg_C};
+            SD_DE         : alu_pb = reg_RDBUS; //{reg_D, reg_E};
+            SD_HL         : alu_pb = reg_RDBUS; //{reg_H, reg_L};
+            SD_SP         : alu_pb = reg_RDBUS; //reg_SP;
+            SD_RPA        : alu_pb = reg_RDBUS; //reg_RPA;
             SD_A          : alu_pb = reg_A;
             SD_EA         : alu_pb = {reg_EAH, reg_EAL};
-            SD_BC         : alu_pb = {reg_B, reg_C};
-            SD_DE         : alu_pb = {reg_D, reg_E};
-            SD_HL         : alu_pb = {reg_H, reg_L};
             SD_MDH        : alu_pb = {8'h00, reg_MDH};
             SD_MD         : alu_pb = {reg_MDH, reg_MDL};
             SD_PC         : alu_pb = reg_PC;
-            SD_SP         : alu_pb = reg_SP;
             SD_PSW        : alu_pb = reg_PSW;
-            SD_RPA        : alu_pb = reg_RPA;
             default       : alu_pb = 16'h0000;
         endcase
     end
@@ -1879,16 +2076,22 @@ always @(posedge emuclk) begin
     end
 end
 
+reg     [7:0]   alu_muldiv_r2_temp;
+always @(posedge emuclk) if(cycle_tick) begin
+    if(mc_type == MCTYPE1 && (mc_t1_alusel == 4'h4 || mc_t1_alusel == 4'h5)) alu_muldiv_r2_temp <= reg_RDBUS[7:0];
+end
+
 wire    [15:0]  alu_mul_pa = {reg_EAH, reg_EAL};
-wire    [15:0]  alu_mul_pb = reg_R2[alu_muldiv_cntr[2:0]] ? ({8'h00, reg_A} << alu_muldiv_cntr[2:0]) : 16'h0000;
+wire    [15:0]  alu_mul_pb = alu_muldiv_r2_temp[alu_muldiv_cntr[2:0]] ? ({8'h00, reg_A} << alu_muldiv_cntr[2:0]) : 16'h0000;
 
 wire    [15:0]  alu_div_pa = reg_TEMP;
-wire    [15:0]  alu_div_pb = ~{8'h00, reg_R2};
+wire    [15:0]  alu_div_pb = ~{8'h00, alu_muldiv_r2_temp};
 
 wire    [31:0]  a = {reg_TEMP, {reg_EAH, reg_EAL}};
 wire    [31:0]  b = {alu_adder_out, {reg_EAH, reg_EAL}};
 wire    [31:0]  alu_div_out = alu_adder_out[15] ? {a[30:0], 1'b0} :
                                                   {b[30:0], 1'b1};
+wire    [7:0]   alu_div_remainder = alu_adder_out[15] ? reg_TEMP[7:0] : alu_adder_out[7:0];
 
 
 //
@@ -1997,6 +2200,8 @@ always @(*) begin
         else if(mc_t1_alusel == 4'h5) begin //DIV
             alu_output = {alu_pa[14:0], 1'b0};
             alu_temp_output = {15'd0, alu_pa[15]};
+
+            alu_muldiv_reg_TEMP_wr = 1'b1;
         end
         else if(mc_t1_alusel == 4'h7) begin //shift 
             alu_output = alu_shifter;
@@ -2054,7 +2259,7 @@ always @(*) begin
                     alu_output = alu_adder_out;
                 end
                 else begin
-                    alu_muldiv_reg_TEMP_wr = alu_muldiv_cntr[3:0] == 4'd15 ? 1'b0 : 1'b1;
+                    alu_muldiv_reg_TEMP_wr = 1'b1; //alu_muldiv_cntr[3:0] == 4'd15 ? 1'b0 : 1'b1;
                     alu_muldiv_reg_EA_wr = 1'b1;
                     
                     alu_adder_op0 = alu_div_pa;  //reg EA
@@ -2062,7 +2267,7 @@ always @(*) begin
                     alu_adder_cin = 1'b1;
                     
                     alu_output = alu_div_out[15:0];
-                    alu_temp_output = alu_div_out[31:16];
+                    alu_temp_output = alu_muldiv_cntr[3:0] == 4'd15 ? {8'h00, alu_div_remainder} : alu_div_out[31:16];
                 end
             end
         end
@@ -2274,6 +2479,7 @@ always @(*) begin
                     4'hD: sk_comb = z_comb;  //OR(skip condition: ZERO)
                     4'hE: sk_comb = ~z_comb; //SNE(skip condition: NO ZERO)
                     4'hF: sk_comb = z_comb;  //SEQ(skip condition: ZERO)
+                    default: sk_comb = 1'b0;
                 endcase
             end
         end
@@ -2282,6 +2488,7 @@ always @(*) begin
                 case(shift_code)
                     4'b0000: sk_comb = c_comb; //SLRC, skip condition: CARRY
                     4'b0100: sk_comb = c_comb; //SLLC, skip condition: CARRY
+                    default: sk_comb = 1'b0;
                 endcase
             end
             else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: CARRY
@@ -2298,6 +2505,7 @@ always @(*) begin
                 3'b101: sk_comb = ~skip_flag; //SKN
                 3'b110: sk_comb = iflag_muxed; //SKIT
                 3'b111: sk_comb = ~iflag_muxed; //SKNIT
+                default: sk_comb = 1'b0;
             endcase
         end
 
@@ -2594,7 +2802,7 @@ reg     [1:0]   ci_sampler;
 reg             ci_nedet, ci_state;
 always @(posedge emuclk) begin
     if(!mrst_n) begin 
-        ci_sampler <= 3'b000;
+        ci_sampler <= 2'b00;
         ci_nedet <= 1'b0;
         ci_state <= 1'b0;
     end
@@ -2668,26 +2876,26 @@ end
 assign eflag[0] = 1'b0; //not implemented
 
 //OV(event counter overflow)
-IKA87AD_iflag u_nedet_ov    (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_OV, 1'b1, 5'd12, reg_OPCODE[4:0], 
+IKA87AD_flag u_nedet_ov     (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_OV, 1'b1, 5'd12, reg_OPCODE[4:0], 
                             1'b1, iflag_manual_ack, 1'b0, eflag[1]);
 
 //AN7-4(negative edge)
 wire    [3:0]   fs_ANx;
-IKA87AD_nedet nedet_an7 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[3], fs_ANx[3]);
-IKA87AD_nedet nedet_an6 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[2], fs_ANx[2]);
-IKA87AD_nedet nedet_an5 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[1], fs_ANx[1]);
-IKA87AD_nedet nedet_an4 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[0], fs_ANx[0]);
+IKA87AD_nedet u_nedet_an7 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[3], fs_ANx[3]);
+IKA87AD_nedet u_nedet_an6 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[2], fs_ANx[2]);
+IKA87AD_nedet u_nedet_an5 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[1], fs_ANx[1]);
+IKA87AD_nedet u_nedet_an4 (mrst_n, emuclk, div3_tick, i_ANx_DIGITAL[0], fs_ANx[0]);
 
-IKA87AD_iflag u_nedet_an7   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[3], 1'b1, 5'd16, reg_OPCODE[4:0], 
+IKA87AD_flag u_eflag_an7    (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[3], 1'b1, 5'd16, reg_OPCODE[4:0], 
                             1'b1, iflag_manual_ack, 1'b0, eflag[2]);
-IKA87AD_iflag u_nedet_an6   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[2], 1'b1, 5'd17, reg_OPCODE[4:0], 
+IKA87AD_flag u_eflag_an6    (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[2], 1'b1, 5'd17, reg_OPCODE[4:0], 
                             1'b1, iflag_manual_ack, 1'b0, eflag[3]);
-IKA87AD_iflag u_nedet_an5   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[1], 1'b1, 5'd18, reg_OPCODE[4:0], 
+IKA87AD_flag u_eflag_an5    (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[1], 1'b1, 5'd18, reg_OPCODE[4:0], 
                             1'b1, iflag_manual_ack, 1'b0, eflag[4]);
-IKA87AD_iflag u_nedet_an4   (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[0], 1'b1, 5'd19, reg_OPCODE[4:0], 
+IKA87AD_flag u_eflag_an4    (mrst_n, emuclk, mcuclk_pcen, cycle_tick, fs_ANx[0], 1'b1, 5'd19, reg_OPCODE[4:0], 
                             1'b1, iflag_manual_ack, 1'b0, eflag[5]);
 
 //SB(first boot flag)
-assign eflag[6] = 1'b0; //not implemented
+assign eflag[6] = 1'b1; //not implemented
 
 endmodule

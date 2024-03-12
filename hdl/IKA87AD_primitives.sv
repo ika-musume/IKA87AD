@@ -1,4 +1,4 @@
-module IKA87AD_iflag (
+module IKA87AD_flag (
     input   wire            i_MRST_n,
     input   wire            i_EMUCLK,
     input   wire            i_SETTICK,
@@ -91,7 +91,7 @@ module IKA87AD_nedet (
 reg     [1:0]   sampler;
 always @(posedge i_EMUCLK) begin
     if(!i_MRST_n) begin 
-        sampler <= 3'b000;
+        sampler <= 2'b00;
         o_NEDET <= 1'b0;
     end
     else begin if(i_TICK) begin

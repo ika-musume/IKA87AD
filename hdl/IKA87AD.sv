@@ -647,10 +647,10 @@ IKA87AD_microcode u_microcode (
         01001: (b) MD_high_byte
         01010: (w) MD_word
         01011: (w) MD_spare(MDI)
-        01100:
-        01101:
-        01110: (b) A
-        01111: (w) EA
+        01100: (b) A
+        01101: (w) EA
+        01110: 
+        01111: 
         10000: (w) ADDR_IM
         10001: (w) ADDR_V_WA 
         10010: (w) ADDR_TA
@@ -676,15 +676,15 @@ IKA87AD_microcode u_microcode (
         00101: (w) rp1, OPCODE[]
         00110: (b) C 
         00111: (w) SP
-        01000: () sr3, OPCODE[0]
+        01000: (w) sr3, OPCODE[0]
         01001: (b) MD_low_byte
         01010: (w) MD_word
         01011: (w) MA
-        01100: (w) PC
-        01101:     sr/sr1, OPCODE[]
-        01110:     sr2, OPCODE[]
-        01111: (b) A
-        10000: (w) EA 
+        01100: (b) A
+        01101: (w) EA 
+        01110: (w) PC
+        01111:     sr/sr1, OPCODE[]
+        10000:     sr2, OPCODE[]
         10001:
         10010:
         10011:
@@ -724,15 +724,15 @@ IKA87AD_microcode u_microcode (
     0010: HL
     0011: SP
     0100: RPA
-    0101:
+    0101: reg_R2
     0110:
     0111:
-    1000: A
-    1001: EA
+    1000: PC
+    1001: PSW
     1010: MD_high_byte
     1011: MD_word
-    1100: PC
-    1101: PSW
+    1100: A
+    1101: EA
     1110: 
     1111: NO_SOURCE
     D[9:6] source C, destination
@@ -744,12 +744,12 @@ IKA87AD_microcode u_microcode (
     0101: 
     0110: 
     0111:     NOWHERE
-    1000: (b) A
-    1001: (w) EA
+    1000: (w) MA
+    1001: (w) MD_word
     1010: (b) MD_low_byte
-    1011  (b) MD_high_byte
-    1100: (w) MD_word
-    1101: (w) MA
+    1011: (b) MD_high_byte    
+    1100: (b) A
+    1101: (w) EA
     1110: (b) PSW
     1111:     PC
 
@@ -829,7 +829,7 @@ IKA87AD_microcode u_microcode (
 
 
 ///////////////////////////////////////////////////////////
-//////  MICROCODE/ALU OUTPUT DECODER
+//////  ALU OUTPUT/GPR ACCESS ADDRESS REMAPPER
 ////
 
 //
@@ -844,10 +844,184 @@ wire            reg_TEMP_wr = alu_muldiv_reg_TEMP_wr | alu_digrot_TEMP_wr;
 
 
 //
-//  Microcode
+//  GPR ACCESS ADDRESS
 //
 
+/*
+    COMMON READ BUS
+    4'h0: {8'h00, reg_V} - r
+    4'h1: {8'h00, reg_A} - r
+    4'h2: {8'h00, reg_EAH} - r1
+    4'h3: {8'h00, reg_EAL} - r1
+    4'h4: {8'h00, reg_B} - common
+    4'h5: {8'h00, reg_C} - common
+    4'h6: {8'h00, reg_D} - common
+    4'h7: {8'h00, reg_E} - common
+    4'h8: {8'h00, reg_H} - common
+    4'h9: {8'h00, reg_L} - common
+    4'hA: reg_SP - rp, rp2
+    4'hB: {reg_V, reg_A} - rp1
+    4'hC: {reg_B, reg_C} - common
+    4'hD: {reg_D, reg_E} - common
+    4'hE: {reg_H, reg_L} - common
+    4'hF: {reg_EAH, reg_EAL} - common
+
+    A READ BUS
+    {8'h00, reg_A}
+
+    EA READ BUS
+    {reg_EAH, reg_EAL}
+*/
+
+//determines which fields in the microcode are used to read the register file
+reg     [2:0]   gpr_acc_mode;
+always @(*) begin
+    gpr_acc_mode = 3'd4;
+    
+    if(mc_type == MCTYPE0) begin
+             if(mc_sa_dst < 5'd8 && mc_sb >= 5'd8) gpr_acc_mode = 3'd0; //source A uses regfile
+        else if(mc_sa_dst >= 5'd8 && mc_sb < 5'd8) gpr_acc_mode = 3'd1; //source B uses regfile
+    end
+    else if(mc_type == MCTYPE1) begin
+             if(mc_sc_dst < 4'd8 && mc_sd >= 4'd8) gpr_acc_mode = 3'd2; //source C uses regfile
+        else if(mc_sc_dst >= 4'd8 && mc_sd < 4'd8) gpr_acc_mode = 3'd3; //source D uses regfile
+    end
+end
+
+//register file address: which register we should read?
+reg     [4:0]   gpr_addr;
+always @(*) begin
+    gpr_addr = 5'h10; //ZERO
+
+    if(gpr_acc_mode[2] != 1'b1) begin
+        if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R) || 
+            (gpr_acc_mode == 3'd1 && mc_sb == SB_R)           ) begin //R type decoder
+            case(reg_OPCODE[2:0])
+                3'b000: gpr_addr = 5'h0;
+                3'b001: gpr_addr = 5'h1;
+                3'b010: gpr_addr = 5'h4;
+                3'b011: gpr_addr = 5'h5;
+                3'b100: gpr_addr = 5'h6;
+                3'b101: gpr_addr = 5'h7;
+                3'b110: gpr_addr = 5'h8;
+                3'b111: gpr_addr = 5'h9;
+            endcase
+        end
+        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R1) || 
+                (gpr_acc_mode == 3'd1 && mc_sb == SB_R1)           ) begin //R1 type decoder
+            case(reg_OPCODE[2:0])
+                3'b000: gpr_addr = 5'h2;
+                3'b001: gpr_addr = 5'h3;
+                3'b010: gpr_addr = 5'h4;
+                3'b011: gpr_addr = 5'h5;
+                3'b100: gpr_addr = 5'h6;
+                3'b101: gpr_addr = 5'h7;
+                3'b110: gpr_addr = 5'h8;
+                3'b111: gpr_addr = 5'h9;
+            endcase
+        end
+        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R2) || 
+                (gpr_acc_mode == 3'd1 && mc_sb == SB_R2)         ||
+                (gpr_acc_mode == 3'd2 && mc_sc_dst == SC_DST_R2) ||
+                (gpr_acc_mode == 3'd3 && mc_sd == SD_R2)           ) begin //R2 type decoder
+            case(reg_OPCODE[1:0])
+                2'b00: gpr_addr = 5'h0;
+                2'b01: gpr_addr = 5'h1;
+                2'b10: gpr_addr = 5'h4;
+                2'b11: gpr_addr = 5'h5;
+            endcase
+        end
+        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP2) || 
+                (gpr_acc_mode == 3'd1 && mc_sb == SB_RP2)           ) begin //RP2 type decoder
+            case(reg_OPCODE[6:4])
+                3'b000: gpr_addr = 5'hA;
+                3'b001: gpr_addr = 5'hC;
+                3'b010: gpr_addr = 5'hD;
+                3'b011: gpr_addr = 5'hE;
+                3'b100: gpr_addr = 5'hF;
+                default: gpr_addr = 5'h10;
+            endcase
+        end
+        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP1) || 
+                (gpr_acc_mode == 3'd1 && mc_sb == SB_RP1)           ) begin //RP1 type decoder
+            case(reg_OPCODE[2:0])
+                3'b000: gpr_addr = 5'hB;
+                3'b001: gpr_addr = 5'hC;
+                3'b010: gpr_addr = 5'hD;
+                3'b011: gpr_addr = 5'hE;
+                3'b100: gpr_addr = 5'hF;
+                default: gpr_addr = 5'h10;
+            endcase
+        end
+        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP) || 
+                (gpr_acc_mode == 3'd1 && mc_sb == SB_RP)           ) begin //RP type decoder
+            case(reg_OPCODE[1:0])
+                2'b00: gpr_addr = 5'hA;
+                2'b01: gpr_addr = 5'hC;
+                2'b10: gpr_addr = 5'hD;
+                2'b11: gpr_addr = 5'hE;
+            endcase
+        end
+        else if((gpr_acc_mode == 3'd1 && mc_sb == SB_RPA) ||
+                (gpr_acc_mode == 3'd3 && mc_sd == SD_RPA)   ) begin //RPA type decoder
+            case(reg_OPCODE[2:0])
+                3'b001: gpr_addr = 5'hC;
+                3'b010: gpr_addr = 5'hD;
+                3'b011: gpr_addr = 5'hE;
+                3'b100: gpr_addr = 5'hD; //A+, use alu type 1 for auto inc/dec
+                3'b101: gpr_addr = 5'hE; //A+, use alu type 1 for auto inc/dec
+                3'b110: gpr_addr = 5'hD; //-A, use alu type 1 for auto inc/dec
+                3'b111: gpr_addr = 5'hE; //-A, use alu type 1 for auto inc/dec
+                default: gpr_addr = 5'h10;
+            endcase
+        end
+        else if(gpr_acc_mode == 3'd1 && mc_sb == SB_RPA2) begin //RPA2 type decoder
+            case(reg_OPCODE[2:0])
+                3'b011: gpr_addr = 5'hD;
+                3'b100: gpr_addr = 5'hE;
+                3'b101: gpr_addr = 5'hE;
+                3'b110: gpr_addr = 5'hE;
+                3'b111: gpr_addr = 5'hE;
+                default: gpr_addr = 5'h10;
+            endcase
+        end
+        else if(gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_C) 
+            gpr_addr = 5'h5;
+        else if(gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_SP) 
+            gpr_addr = 5'hA;
+        else if((gpr_acc_mode == 3'd2 && mc_sc_dst == SC_DST_BC) || 
+                (gpr_acc_mode == 3'd3 && mc_sd == SD_BC)) 
+            gpr_addr = 5'hC;
+        else if(gpr_acc_mode == 3'd3 && mc_sd == SD_DE) 
+            gpr_addr = 5'hD;
+        else if(gpr_acc_mode == 3'd3 && mc_sd == SD_HL) 
+            gpr_addr = 5'hE;
+        else if(gpr_acc_mode == 3'd3 && mc_sd == SD_SP) 
+            gpr_addr = 5'hA;
+        else if(gpr_acc_mode == 3'd4) begin
+            case(reg_OPCODE[1:0])
+                2'b00: gpr_addr = 5'h0;
+                2'b01: gpr_addr = 5'h1;
+                2'b10: gpr_addr = 5'h4;
+                2'b11: gpr_addr = 5'h5;
+            endcase
+        end
+    end
+end
+
 //GPR write
+reg             gpr_wr;
+always @(*) begin
+    gpr_wr = 1'b0;
+    
+    if(gpr_acc_mode[2] == 1'b0) begin
+        if(gpr_acc_mode[0] == 1'b0) gpr_wr = 1'b1;
+        else begin
+            if(mc_type == MCTYPE1 && mc_t1_alusel > 4'h7) gpr_wr = 1'b1;
+        end
+    end
+end 
+
 wire    [2:0]   r_addr = reg_OPCODE[2:0];
 wire    [1:0]   r2_addr = reg_OPCODE[1:0];
 wire    [2:0]   r1_addr = reg_OPCODE[2:0];
@@ -856,88 +1030,34 @@ wire    [1:0]   rp_addr = reg_OPCODE[5:4];
 wire    [2:0]   rp1_addr = reg_OPCODE[2:0];
 wire    [1:0]   rpa_incdec_addr = {reg_OPCODE[2], reg_OPCODE[0]};
 
+//wire            reg_EAL_wr = (regfile_wr && (gpr_addr == 4'h3 || gpr_addr == 4'hF)) ||
+//                             alu_muldiv_reg_EA_wr;
+
 wire            reg_EAL_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA) ||                      //direct designation
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA) ||                      //direct designation
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd1) || //rp1 word
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd4) || //rp2 word
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd4) || //rp1 word
+                             (gpr_wr && (gpr_addr == 4'h3 || gpr_addr == 4'hF)) ||
                              alu_muldiv_reg_EA_wr;
-
 wire            reg_EAH_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA) ||                      //direct designation
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA) ||                      //direct designation
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd0) || //r1 byte
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd4) || //rp2 word
-                             (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd4) || //rp1 word
+                             (gpr_wr && (gpr_addr == 4'h2 || gpr_addr == 4'hF)) ||
                              alu_muldiv_reg_EA_wr;
                              
-wire            reg_V_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd0) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd0);   //rp1 word
-
+wire            reg_V_wr  = (gpr_wr && (gpr_addr == 4'h0 || gpr_addr == 4'hB));
 wire            reg_A_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_A) ||                       //direct designation
                             (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_A) ||                       //direct designation
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd1) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd1) || //r2 byte(mc0)
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd1) || //r2 byte(mc1)
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd0);   //rp1 word
+                            (gpr_wr && (gpr_addr == 4'h1 || gpr_addr == 4'hB));
 
-wire            reg_B_wr  = (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC) ||                      //direct designation
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd2) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd2) || //r2 byte(mc0)
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd2) || //r2 byte(mc1)
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd2) || //r1 byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1) || //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1) || //rp word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1);   //rp1 word
+wire            reg_B_wr  = (gpr_wr && (gpr_addr == 4'h4 || gpr_addr == 4'hC));
+wire            reg_C_wr  = (gpr_wr && (gpr_addr == 4'h5 || gpr_addr == 4'hC));
 
-wire            reg_C_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_C)  ||                      //direct designation
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC) ||                      //direct designation
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd3) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R2  && r2_addr  == 2'd3) || //r2 byte(mc0)
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_R2  && r2_addr  == 2'd3) || //r2 byte(mc1)
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd3) || //r1 byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd1) || //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd1) || //rp word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd1);   //rp1 word
+wire            reg_D_wr  = (gpr_wr && (gpr_addr == 4'h6 || gpr_addr == 4'hD));
+wire            reg_E_wr  = (gpr_wr && (gpr_addr == 4'h7 || gpr_addr == 4'hD));
 
-wire            reg_D_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd4) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd4) || //r1 byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 word
-                            (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2)  || //rpa auto inc/dec condition
-                            (mc_type == MCTYPE1 && mc_sd == SD_DE  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
-
-wire            reg_E_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd5) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd5) || //r1 byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd2) || //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd2) || //rp word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd2) || //rp1 word
-                            (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd2)  || //rpa auto inc/dec condition
-                            (mc_type == MCTYPE1 && mc_sd == SD_DE  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
-
-wire            reg_H_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd6) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd6) || //r1 byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 word
-                            (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3)  || //rpa auto inc/dec condition
-                            (mc_type == MCTYPE1 && mc_sd == SD_HL  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
-
-wire            reg_L_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R   && r_addr   == 3'd7) || //r byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_R1  && r1_addr  == 3'd7) || //r1 byte
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd3) || //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd3) || //rp word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1 && rp1_addr == 3'd3) || //rp1 word
-                            (mc_type == MCTYPE1 && mc_sd == SD_RPA && rpa_incdec_addr == 2'd3)  || //rpa auto inc/dec condition
-                            (mc_type == MCTYPE1 && mc_sd == SD_HL  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
+wire            reg_H_wr  = (gpr_wr && (gpr_addr == 4'h8 || gpr_addr == 4'hE));
+wire            reg_L_wr  = (gpr_wr && (gpr_addr == 4'h9 || gpr_addr == 4'hE));
 
 wire            data_w_nb = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || //direct designation
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2) || 
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP ) || 
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP1) || 
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MD ) || //direct designation
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA ) || //direct designation
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_BC ) || //direct designation
+                            (gpr_wr && (gpr_addr > 4'hA)) ||
                             (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1000) || //addr dec
                             (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1001) || //addr inc(BLOCK)
                             (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1010) || //rpa auto inc/dec
@@ -947,10 +1067,8 @@ wire            data_w_nb = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || /
 wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
                             (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_PC) ||
                             (mc_type == MCTYPE3 && mc_s_cond_pc_dec);
-wire            reg_SP_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SP ) ||                      //direct designation
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP2 && rp2_addr == 3'd0) ||  //rp2 word
-                            (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_RP  && rp_addr  == 2'd0) ||
-                            (mc_type == MCTYPE1 && mc_sd == SD_SP  && mc_t1_alusel[3:1] == 3'b100); //manual inc/dec
+
+wire            reg_SP_wr = (gpr_wr && (gpr_addr == 4'hA));
 
 //Memory IO related registers, MA=Memory Address, MD=Memory Data
 wire            reg_MA_dec_mode = mc_type == MCTYPE1 && mc_t1_alusel == 4'h8;
@@ -1561,173 +1679,11 @@ end
 //////  ALU READ PORT MULTIPLEXERS
 ////
 
-/*
-    COMMON READ BUS
-    4'h0: {8'h00, reg_V} - r
-    4'h1: {8'h00, reg_A} - r
-    4'h2: {8'h00, reg_EAH} - r1
-    4'h3: {8'h00, reg_EAL} - r1
-    4'h4: {8'h00, reg_B} - common
-    4'h5: {8'h00, reg_C} - common
-    4'h6: {8'h00, reg_D} - common
-    4'h7: {8'h00, reg_E} - common
-    4'h8: {8'h00, reg_H} - common
-    4'h9: {8'h00, reg_L} - common
-    4'hA: reg_SP - rp, rp2
-    4'hB: {reg_V, reg_A} - rp1
-    4'hC: {reg_B, reg_C} - common
-    4'hD: {reg_D, reg_E} - common
-    4'hE: {reg_H, reg_L} - common
-    4'hF: {reg_EAH, reg_EAL} - common
-
-    A READ BUS
-    {8'h00, reg_A}
-
-    EA READ BUS
-    {reg_EAH, reg_EAL}
-*/
-
-//determines which fields in the microcode are used to read the register file
-reg     [2:0]   mc_regfile_acc_mode;
-always @(*) begin
-    mc_regfile_acc_mode = 3'd4;
-    
-    if(mc_type == MCTYPE0) begin
-             if(mc_sa_dst < 5'd8 && mc_sb >= 5'd8) mc_regfile_acc_mode = 3'd0; //source A uses regfile
-        else if(mc_sa_dst >= 5'd8 && mc_sb < 5'd8) mc_regfile_acc_mode = 3'd1; //source B uses regfile
-    end
-    else if(mc_type == MCTYPE1) begin
-             if(mc_sc_dst < 4'd8 && mc_sd >= 4'd8) mc_regfile_acc_mode = 3'd2; //source C uses regfile
-        else if(mc_sc_dst >= 4'd8 && mc_sd < 4'd8) mc_regfile_acc_mode = 3'd3; //source D uses regfile
-    end
-end
-
-//register file address: which register we should read?
-reg     [4:0]   regfile_addr;
-always @(*) begin
-    regfile_addr = 5'h10; //ZERO
-
-    if(mc_regfile_acc_mode[2] != 1'b1) begin
-        if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R) || 
-            (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_R)           ) begin //R type decoder
-            case(reg_OPCODE[2:0])
-                3'b000: regfile_addr = 5'h0;
-                3'b001: regfile_addr = 5'h1;
-                3'b010: regfile_addr = 5'h4;
-                3'b011: regfile_addr = 5'h5;
-                3'b100: regfile_addr = 5'h6;
-                3'b101: regfile_addr = 5'h7;
-                3'b110: regfile_addr = 5'h8;
-                3'b111: regfile_addr = 5'h9;
-            endcase
-        end
-        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R1) || 
-                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_R1)           ) begin //R1 type decoder
-            case(reg_OPCODE[2:0])
-                3'b000: regfile_addr = 5'h2;
-                3'b001: regfile_addr = 5'h3;
-                3'b010: regfile_addr = 5'h4;
-                3'b011: regfile_addr = 5'h5;
-                3'b100: regfile_addr = 5'h6;
-                3'b101: regfile_addr = 5'h7;
-                3'b110: regfile_addr = 5'h8;
-                3'b111: regfile_addr = 5'h9;
-            endcase
-        end
-        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R2) || 
-                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_R2)         ||
-                (mc_regfile_acc_mode == 3'd2 && mc_sc_dst == SC_DST_R2) ||
-                (mc_regfile_acc_mode == 3'd3 && mc_sd == SD_R2)           ) begin //R2 type decoder
-            case(reg_OPCODE[1:0])
-                2'b00: regfile_addr = 5'h0;
-                2'b01: regfile_addr = 5'h1;
-                2'b10: regfile_addr = 5'h4;
-                2'b11: regfile_addr = 5'h5;
-            endcase
-        end
-        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP2) || 
-                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RP2)           ) begin //RP2 type decoder
-            case(reg_OPCODE[6:4])
-                3'b000: regfile_addr = 5'hA;
-                3'b001: regfile_addr = 5'hC;
-                3'b010: regfile_addr = 5'hD;
-                3'b011: regfile_addr = 5'hE;
-                3'b100: regfile_addr = 5'hF;
-                default: regfile_addr = 5'h10;
-            endcase
-        end
-        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP1) || 
-                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RP1)           ) begin //RP1 type decoder
-            case(reg_OPCODE[2:0])
-                3'b000: regfile_addr = 5'hB;
-                3'b001: regfile_addr = 5'hC;
-                3'b010: regfile_addr = 5'hD;
-                3'b011: regfile_addr = 5'hE;
-                3'b100: regfile_addr = 5'hF;
-                default: regfile_addr = 5'h10;
-            endcase
-        end
-        else if((mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP) || 
-                (mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RP)           ) begin //RP type decoder
-            case(reg_OPCODE[1:0])
-                2'b00: regfile_addr = 5'hA;
-                2'b01: regfile_addr = 5'hC;
-                2'b10: regfile_addr = 5'hD;
-                2'b11: regfile_addr = 5'hE;
-            endcase
-        end
-        else if((mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RPA) ||
-                (mc_regfile_acc_mode == 3'd3 && mc_sd == SD_RPA)   ) begin //RPA type decoder
-            case(reg_OPCODE[2:0])
-                3'b001: regfile_addr = 5'hC;
-                3'b010: regfile_addr = 5'hD;
-                3'b011: regfile_addr = 5'hE;
-                3'b100: regfile_addr = 5'hD; //A+, use alu type 1 for auto inc/dec
-                3'b101: regfile_addr = 5'hE; //A+, use alu type 1 for auto inc/dec
-                3'b110: regfile_addr = 5'hD; //-A, use alu type 1 for auto inc/dec
-                3'b111: regfile_addr = 5'hE; //-A, use alu type 1 for auto inc/dec
-                default: regfile_addr = 5'h10;
-            endcase
-        end
-        else if(mc_regfile_acc_mode == 3'd1 && mc_sb == SB_RPA2) begin //RPA2 type decoder
-            case(reg_OPCODE[2:0])
-                3'b011: regfile_addr = 5'hD;
-                3'b100: regfile_addr = 5'hE;
-                3'b101: regfile_addr = 5'hE;
-                3'b110: regfile_addr = 5'hE;
-                3'b111: regfile_addr = 5'hE;
-                default: regfile_addr = 5'h10;
-            endcase
-        end
-        else if(mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_C) 
-            regfile_addr = 5'h5;
-        else if(mc_regfile_acc_mode == 3'd0 && mc_sa_dst == SA_DST_SP) 
-            regfile_addr = 5'hA;
-        else if((mc_regfile_acc_mode == 3'd2 && mc_sc_dst == SC_DST_BC) || 
-                (mc_regfile_acc_mode == 3'd3 && mc_sd == SD_BC)) 
-            regfile_addr = 5'hC;
-        else if(mc_regfile_acc_mode == 3'd3 && mc_sd == SD_DE) 
-            regfile_addr = 5'hD;
-        else if(mc_regfile_acc_mode == 3'd3 && mc_sd == SD_HL) 
-            regfile_addr = 5'hE;
-        else if(mc_regfile_acc_mode == 3'd3 && mc_sd == SD_SP) 
-            regfile_addr = 5'hA;
-        else if(mc_regfile_acc_mode == 3'd4) begin
-            case(reg_OPCODE[1:0])
-                2'b00: regfile_addr = 5'h0;
-                2'b01: regfile_addr = 5'h1;
-                2'b10: regfile_addr = 5'h4;
-                2'b11: regfile_addr = 5'h5;
-            endcase
-        end
-    end
-end
-
 reg     [15:0]  reg_RDBUS;
 always @(*) begin
-    if(regfile_addr[4]) reg_RDBUS = 16'h0000;
+    if(gpr_addr[4]) reg_RDBUS = 16'h0000;
     else begin
-        case(regfile_addr[3:0])
+        case(gpr_addr[3:0])
             4'h0: reg_RDBUS = {8'h00, reg_V};
             4'h1: reg_RDBUS = {8'h00, reg_A};
             4'h2: reg_RDBUS = {8'h00, reg_EAH};
@@ -1860,9 +1816,6 @@ always @(*) begin
         3'b111: reg_RPA2_OFFSET = {8'h00, reg_MDH};
     endcase
 end
-
-
-
 
 //ALU port A and B
 reg     [15:0]  alu_pa, alu_pb; 

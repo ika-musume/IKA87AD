@@ -24,11 +24,12 @@ localparam SA_DST_SR3    = 5'b01000;
 localparam SA_DST_MDL    = 5'b01001;
 localparam SA_DST_MD     = 5'b01010;
 localparam SA_DST_MA     = 5'b01011;
-localparam SA_DST_PC     = 5'b01100;
-localparam SA_DST_SR_SR1 = 5'b01101;
-localparam SA_DST_SR2    = 5'b01110;
-localparam SA_DST_A      = 5'b01111;
-localparam SA_DST_EA     = 5'b10000;
+localparam SA_DST_A      = 5'b01100;
+localparam SA_DST_EA     = 5'b01101;
+localparam SA_DST_PC     = 5'b01110;
+localparam SA_DST_SR_SR1 = 5'b01111;
+localparam SA_DST_SR2    = 5'b10000;
+
 
 //source b types
 localparam SB_R          = 5'b00000;
@@ -43,8 +44,8 @@ localparam SB_SR4        = 5'b01000;
 localparam SB_MDH        = 5'b01001;
 localparam SB_MD         = 5'b01010;
 localparam SB_MDI        = 5'b01011;
-localparam SB_A          = 5'b01110;
-localparam SB_EA         = 5'b01111;
+localparam SB_A          = 5'b01100;
+localparam SB_EA         = 5'b01101;
 localparam SB_ADDR_V_WA  = 5'b10001;
 localparam SB_ADDR_TA    = 5'b10010;
 localparam SB_ADDR_FA    = 5'b10011;
@@ -66,12 +67,12 @@ localparam SB_OFFSET     = 5'b11111;
 localparam SC_DST_BC     = 4'b0000;
 localparam SC_DST_R2     = 4'b0001;
 localparam SC_DST_NOWHERE = 4'b0111;
-localparam SC_DST_A      = 4'b1000;
-localparam SC_DST_EA     = 4'b1001;
+localparam SC_DST_MA     = 4'b1000;
+localparam SC_DST_MD     = 4'b1001;
 localparam SC_DST_MDL    = 4'b1010;
 localparam SC_DST_MDH    = 4'b1011;
-localparam SC_DST_MD     = 4'b1100;
-localparam SC_DST_MA     = 4'b1101;
+localparam SC_DST_A      = 4'b1100;
+localparam SC_DST_EA     = 4'b1101;
 localparam SC_DST_PSW    = 4'b1110;
 localparam SC_DST_PC     = 4'b1111;
 
@@ -83,12 +84,12 @@ localparam SD_HL         = 4'b0010;
 localparam SD_SP         = 4'b0011;
 localparam SD_RPA        = 4'b0100;
 localparam SD_R2         = 4'b0101;
-localparam SD_A          = 4'b1000;
-localparam SD_EA         = 4'b1001;
+localparam SD_PC         = 4'b1000;
+localparam SD_PSW        = 4'b1001;
 localparam SD_MDH        = 4'b1010;
 localparam SD_MD         = 4'b1011;
-localparam SD_PC         = 4'b1100;
-localparam SD_PSW        = 4'b1101;
+localparam SD_A          = 4'b1100;
+localparam SD_EA         = 4'b1101;
 localparam SD_NOSOURCE   = 4'b1111;
 
 //MICROCODE ROUTINE ENTRANCE ADDRESS

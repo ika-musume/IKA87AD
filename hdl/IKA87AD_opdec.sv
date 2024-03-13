@@ -74,7 +74,7 @@ always @(*) begin
     else if(opcode_page == 3'd1) begin
              if((op[7:4] == 4'h3  ||  op[7:4] == 4'hB) &&
                 (op[3:0] == 4'hB))                      sa = SUSP;
-        else if( op[7:4] == 4'h4  &&  op[3:0] == 4'h8 ) sa = TABLE;
+        else if( op[7:4] == 4'hA  &&  op[3:0] == 4'h8 ) sa = TABLE;
         else if( op[7:4] == 4'h3  &&  op[3:1] == 3'h4 ) sa = RLD_RRD;
         else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h9 ) sa = CALB;
         else if( op[7:4] == 4'h9  &&

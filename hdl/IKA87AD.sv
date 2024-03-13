@@ -24,7 +24,7 @@ module IKA87AD(
     input   wire    [7:0]       i_DI,
     output  wire    [7:0]       o_DO,
     output  wire                o_PD_DO_OE, //port D multiplexed ADDR/DATA output output enable
-    output  wire                o_AnD_SEL, //port D multiplexed ADDR/DATA select signal 
+    output  wire                o_D_nA_SEL, //port D multiplexed ADDR/DATA select signal 
     output  wire                o_DO_OE, //data bus output enable
 
     //memory structure config register

@@ -23,8 +23,9 @@ module IKA87AD(
     output  wire    [15:0]      o_A,
     input   wire    [7:0]       i_DI,
     output  wire    [7:0]       o_DO,
-    output  wire                o_PD_DO_OE,
-    output  wire                o_DO_OE,
+    output  wire                o_PD_DO_OE, //port D multiplexed ADDR/DATA output output enable
+    output  wire                o_AnD_SEL, //port D multiplexed ADDR/DATA select signal 
+    output  wire                o_DO_OE, //data bus output enable
 
     //memory structure config register
     output  wire    [7:0]       o_REG_MM, //MM register
@@ -37,6 +38,8 @@ module IKA87AD(
     //timer control
     input   wire                i_TI, //PC3
     output  wire                o_TO, //PC4
+    output  wire                o_TO_PCEN, //TO output positive edge clock enable
+    output  wire                o_TO_NCEN, //TO output negative edge clock enable
 
     //event counter control
     input   wire                i_CI, //PC5
@@ -55,6 +58,7 @@ module IKA87AD(
     input   wire    [7:0]       i_PC_I,
     output  wire    [7:0]       o_PC_O,
     output  wire    [7:0]       o_PC_OE,
+    output  wire    [7:0]       o_REG_MCC, //port C alternative function select
 
     //port D I/O and output enables
     input   wire    [7:0]       i_PD_I,
@@ -1022,17 +1026,6 @@ always @(*) begin
     end
 end 
 
-wire    [2:0]   r_addr = reg_OPCODE[2:0];
-wire    [1:0]   r2_addr = reg_OPCODE[1:0];
-wire    [2:0]   r1_addr = reg_OPCODE[2:0];
-wire    [2:0]   rp2_addr = reg_OPCODE[6:4];
-wire    [1:0]   rp_addr = reg_OPCODE[5:4];
-wire    [2:0]   rp1_addr = reg_OPCODE[2:0];
-wire    [1:0]   rpa_incdec_addr = {reg_OPCODE[2], reg_OPCODE[0]};
-
-//wire            reg_EAL_wr = (regfile_wr && (gpr_addr == 4'h3 || gpr_addr == 4'hF)) ||
-//                             alu_muldiv_reg_EA_wr;
-
 wire            reg_EAL_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA) ||                      //direct designation
                              (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA) ||                      //direct designation
                              (gpr_wr && (gpr_addr == 4'h3 || gpr_addr == 4'hF)) ||
@@ -1363,14 +1356,13 @@ reg     [2:0]   sreg_MKH; //intrq disable register high; -, -, -, -, -, empty, f
 
 reg     [4:0]   sreg_ANM; //ADC settings
 
-reg     [7:0]   sreg_SMH, sreg_SML; //serial interface settings
+//reg     [7:0]   sreg_SMH, sreg_SML; //serial interface settings
+//reg     [1:0]   sreg_ZCM; //zero crossing detector bias mode select
 
 reg     [7:0]   sreg_EOM;
 reg     [7:0]   sreg_ETMM;
 reg     [7:0]   sreg_TMM;
 reg     [7:0]   sreg_TM0, sreg_TM1; //undefined after reset, see page 180
-
-reg     [1:0]   sreg_ZCM;
 
 reg     [15:0]  sreg_ETM0, sreg_ETM1; //undefined after reset, see page 180
 
@@ -1378,6 +1370,8 @@ reg     [7:0]   sreg_CR[0:3];
 
 assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b0};
 assign o_REG_MM = sreg_MM;
+assign o_REG_MCC = sreg_MCC;
+
 
 reg     [7:0]   sreg_RDBUS;
 always @(posedge emuclk) begin
@@ -1387,12 +1381,12 @@ always @(posedge emuclk) begin
         sreg_MCC <= 8'h00;
         sreg_MKL <= 7'b1111111; sreg_MKH <= 3'b111;
         sreg_ANM <= 5'h00;
-        sreg_SMH <= 8'h00; sreg_SML <= 8'h48;
+        //sreg_SMH <= 8'h00; sreg_SML <= 8'h48;
         sreg_EOM <= 8'h00;
         sreg_ETMM <= 8'h00;
         sreg_TMM <= 8'hFF;
         sreg_TM0 <= 8'h00; sreg_TM1 <= 8'h00; //see page 79
-        sreg_ZCM <= 2'b11; //see page 59
+        //sreg_ZCM <= 2'b11; //see page 59
         sreg_ETM0 <= 16'h0000; sreg_ETM1 <= 16'h0000;
     end
     else begin 
@@ -1406,8 +1400,8 @@ always @(posedge emuclk) begin
                 6'h06: sreg_MKH <= alu_output[2:0];
                 6'h07: sreg_MKL <= alu_output[7:1];
                 6'h08: sreg_ANM <= alu_output[4:0];
-                6'h09: sreg_SMH <= alu_output[7:0];
-                6'h0A: sreg_SML <= alu_output[7:0];
+                //6'h09: sreg_SMH <= alu_output[7:0];
+                //6'h0A: sreg_SML <= alu_output[7:0];
                 6'h0B: sreg_EOM <= alu_output[7:0];
                 6'h0C: sreg_ETMM <= alu_output[7:0];
                 6'h0D: sreg_TMM <= alu_output[7:0];
@@ -1417,10 +1411,10 @@ always @(posedge emuclk) begin
                 6'h13: sreg_MB <= alu_output[7:0];
                 6'h14: sreg_MC <= alu_output[7:0];
                 6'h17: sreg_MF <= alu_output[7:0];
-                6'h18: ; //TxB, not implemented
+                //6'h18: ; //TxB, not implemented
                 6'h1A: sreg_TM0 <= alu_output[7:0];
                 6'h1B: sreg_TM1 <= alu_output[7:0];
-                6'h28: sreg_ZCM <= alu_output[2:1];
+                //6'h28: sreg_ZCM <= alu_output[2:1];
                 6'h30: sreg_ETM0 <= alu_output[15:0];
                 6'h31: sreg_ETM1 <= alu_output[15:0];
                 default: ;
@@ -1440,7 +1434,7 @@ always @(*) begin
             6'h03: sreg_RDBUS = i_PD_I; 
             6'h05: sreg_RDBUS = i_PF_I;
             6'h08: sreg_RDBUS = {3'b000, sreg_ANM};
-            6'h09: sreg_RDBUS = sreg_SMH;
+            //6'h09: sreg_RDBUS = sreg_SMH;
             6'h0B: sreg_RDBUS = sreg_EOM;
             6'h0D: sreg_RDBUS = sreg_TMM;
             6'h19: sreg_RDBUS = 8'h00; //RxB, not implemented
@@ -1462,6 +1456,7 @@ end
 
 //multiplexed addr/data selector
 reg             addr_data_sel;
+assign o_AnD_SEL = addr_data_sel;
 always @(posedge emuclk) begin
     if(!mrst_n) addr_data_sel <= 1'b0; //reset
     else begin
@@ -1595,13 +1590,21 @@ assign  o_DO = md_out_byte_data;
 
 //ALE, /RD, /WR
 reg             ale_out, rd_out, wr_out, pd_do_oe, do_oe, m1, io;
+
+//bus control signal
 assign o_ALE = ale_out;
 assign o_RD_n = ~rd_out;
 assign o_WR_n = ~wr_out;
-assign o_PD_DO_OE = pd_do_oe;
-assign o_DO_OE = do_oe;
+
+assign o_PD_DO_OE = pd_do_oe; //port D multiplexed addr/data output output enable
+assign o_DO_OE = do_oe; //data output enable
 assign o_M1_n = ~m1;
 assign o_IO_n = ~io;
+
+//ale/wr/rd pin output enable
+assign o_ALE_OE = i_RESET_n;
+assign o_WR_n_OE = i_RESET_n;
+assign o_RD_n_OE = i_RESET_n;
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
@@ -1881,7 +1884,7 @@ always @(*) begin
         case(mc_sc_dst)
             SC_DST_R2     : alu_pa = reg_RDBUS; //{8'h00, reg_R2};
             SC_DST_BC     : alu_pa = reg_RDBUS; //{reg_B, reg_C};
-            SC_DST_A      : alu_pa = reg_A;
+            SC_DST_A      : alu_pa = {8'h00, reg_A};
             SC_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
             SC_DST_MDL    : alu_pa = {8'h00, reg_MDL};
             SC_DST_MDH    : alu_pa = {8'h00, reg_MDH};
@@ -1898,7 +1901,7 @@ always @(*) begin
             SD_HL         : alu_pb = reg_RDBUS; //{reg_H, reg_L};
             SD_SP         : alu_pb = reg_RDBUS; //reg_SP;
             SD_RPA        : alu_pb = reg_RDBUS; //reg_RPA;
-            SD_A          : alu_pb = reg_A;
+            SD_A          : alu_pb = {8'h00, reg_A};
             SD_EA         : alu_pb = {reg_EAH, reg_EAL};
             SD_MDH        : alu_pb = {8'h00, reg_MDH};
             SD_MD         : alu_pb = {reg_MDH, reg_MDL};
@@ -2684,6 +2687,8 @@ assign is_TIMER0 = ~soft_stop_flag & timer0_match & timer_tick;
 assign is_TIMER1 = ~soft_stop_flag & timer1_match & timer_tick;
 assign release_soft_stop = soft_stop_flag & timer1_match & timer_tick; //release soft stop
 assign o_TO = tmff;
+assign o_TO_PCEN = tmff_pcen;
+assign o_TO_NCEN = tmff_ncen;
 always @(*) begin
     case(sreg_TMM[3:2])
         2'b00: timer0_cnt = timer_div12;

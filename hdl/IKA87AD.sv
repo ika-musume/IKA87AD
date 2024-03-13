@@ -1348,103 +1348,103 @@ always @(*) begin
 end
 
 //port related register
-reg     [7:0]   sreg_PAO, sreg_PBO, sreg_PCO, sreg_PDO, sreg_PFO; //undefined after reset, see page 180
-reg     [7:0]   sreg_MA, sreg_MB, sreg_MC, sreg_MF, sreg_MM, sreg_MCC;
+reg     [7:0]   spr_PAO, spr_PBO, spr_PCO, spr_PDO, spr_PFO; //undefined after reset, see page 180
+reg     [7:0]   spr_MA, spr_MB, spr_MC, spr_MF, spr_MM, spr_MCC;
 
-reg     [6:0]   sreg_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
-reg     [2:0]   sreg_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
+reg     [6:0]   spr_MKL; //intrq disable register low ; ncntrcin, cntr1, cntr0, pint1, nint2, timer1, timer0, -
+reg     [2:0]   spr_MKH; //intrq disable register high; -, -, -, -, -, empty, full, adc
 
-reg     [4:0]   sreg_ANM; //ADC settings
+reg     [4:0]   spr_ANM; //ADC settings
 
-//reg     [7:0]   sreg_SMH, sreg_SML; //serial interface settings
-//reg     [1:0]   sreg_ZCM; //zero crossing detector bias mode select
+//reg     [7:0]   spr_SMH, spr_SML; //serial interface settings
+//reg     [1:0]   spr_ZCM; //zero crossing detector bias mode select
 
-reg     [7:0]   sreg_EOM;
-reg     [7:0]   sreg_ETMM;
-reg     [7:0]   sreg_TMM;
-reg     [7:0]   sreg_TM0, sreg_TM1; //undefined after reset, see page 180
+reg     [7:0]   spr_EOM;
+reg     [7:0]   spr_ETMM;
+reg     [7:0]   spr_TMM;
+reg     [7:0]   spr_TM0, spr_TM1; //undefined after reset, see page 180
 
-reg     [15:0]  sreg_ETM0, sreg_ETM1; //undefined after reset, see page 180
+reg     [15:0]  spr_ETM0, spr_ETM1; //undefined after reset, see page 180
 
-reg     [7:0]   sreg_CR[0:3];
+reg     [7:0]   spr_CR[0:3];
 
-assign irq_mask_n = ~{sreg_MKH, sreg_MKL, 1'b0};
-assign o_REG_MM = sreg_MM;
-assign o_REG_MCC = sreg_MCC;
+assign irq_mask_n = ~{spr_MKH, spr_MKL, 1'b0};
+assign o_REG_MM = spr_MM;
+assign o_REG_MCC = spr_MCC;
 
 
-reg     [7:0]   sreg_RDBUS;
+reg     [7:0]   spr_RDBUS;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        sreg_PAO <= 8'h00; sreg_PBO <= 8'h00; sreg_PCO <= 8'h00; sreg_PDO <= 8'h00; sreg_PFO <= 8'h00;
-        sreg_MA  <= 8'hFF; sreg_MB  <= 8'hFF; sreg_MC  <= 8'hFF; sreg_MF  <= 8'hFF; sreg_MM  <= 8'h00;
-        sreg_MCC <= 8'h00;
-        sreg_MKL <= 7'b1111111; sreg_MKH <= 3'b111;
-        sreg_ANM <= 5'h00;
-        //sreg_SMH <= 8'h00; sreg_SML <= 8'h48;
-        sreg_EOM <= 8'h00;
-        sreg_ETMM <= 8'h00;
-        sreg_TMM <= 8'hFF;
-        sreg_TM0 <= 8'h00; sreg_TM1 <= 8'h00; //see page 79
-        //sreg_ZCM <= 2'b11; //see page 59
-        sreg_ETM0 <= 16'h0000; sreg_ETM1 <= 16'h0000;
+        spr_PAO <= 8'h00; spr_PBO <= 8'h00; spr_PCO <= 8'h00; spr_PDO <= 8'h00; spr_PFO <= 8'h00;
+        spr_MA  <= 8'hFF; spr_MB  <= 8'hFF; spr_MC  <= 8'hFF; spr_MF  <= 8'hFF; spr_MM  <= 8'h00;
+        spr_MCC <= 8'h00;
+        spr_MKL <= 7'b1111111; spr_MKH <= 3'b111;
+        spr_ANM <= 5'h00;
+        //spr_SMH <= 8'h00; spr_SML <= 8'h48;
+        spr_EOM <= 8'h00;
+        spr_ETMM <= 8'h00;
+        spr_TMM <= 8'hFF;
+        spr_TM0 <= 8'h00; spr_TM1 <= 8'h00; //see page 79
+        //spr_ZCM <= 2'b11; //see page 59
+        spr_ETM0 <= 16'h0000; spr_ETM1 <= 16'h0000;
     end
     else begin 
         if(cycle_tick) begin
             case(sr_wr_addr) 
-                6'h00: sreg_PAO <= alu_output[7:0];
-                6'h01: sreg_PBO <= alu_output[7:0];
-                6'h02: sreg_PCO <= alu_output[7:0];
-                6'h03: sreg_PDO <= alu_output[7:0];
-                6'h05: sreg_PFO <= alu_output[7:0];
-                6'h06: sreg_MKH <= alu_output[2:0];
-                6'h07: sreg_MKL <= alu_output[7:1];
-                6'h08: sreg_ANM <= alu_output[4:0];
-                //6'h09: sreg_SMH <= alu_output[7:0];
-                //6'h0A: sreg_SML <= alu_output[7:0];
-                6'h0B: sreg_EOM <= alu_output[7:0];
-                6'h0C: sreg_ETMM <= alu_output[7:0];
-                6'h0D: sreg_TMM <= alu_output[7:0];
-                6'h10: sreg_MM <= alu_output[7:0];
-                6'h11: sreg_MCC <= alu_output[7:0];
-                6'h12: sreg_MA <= alu_output[7:0];
-                6'h13: sreg_MB <= alu_output[7:0];
-                6'h14: sreg_MC <= alu_output[7:0];
-                6'h17: sreg_MF <= alu_output[7:0];
+                6'h00: spr_PAO <= alu_output[7:0];
+                6'h01: spr_PBO <= alu_output[7:0];
+                6'h02: spr_PCO <= alu_output[7:0];
+                6'h03: spr_PDO <= alu_output[7:0];
+                6'h05: spr_PFO <= alu_output[7:0];
+                6'h06: spr_MKH <= alu_output[2:0];
+                6'h07: spr_MKL <= alu_output[7:1];
+                6'h08: spr_ANM <= alu_output[4:0];
+                //6'h09: spr_SMH <= alu_output[7:0];
+                //6'h0A: spr_SML <= alu_output[7:0];
+                6'h0B: spr_EOM <= alu_output[7:0];
+                6'h0C: spr_ETMM <= alu_output[7:0];
+                6'h0D: spr_TMM <= alu_output[7:0];
+                6'h10: spr_MM <= alu_output[7:0];
+                6'h11: spr_MCC <= alu_output[7:0];
+                6'h12: spr_MA <= alu_output[7:0];
+                6'h13: spr_MB <= alu_output[7:0];
+                6'h14: spr_MC <= alu_output[7:0];
+                6'h17: spr_MF <= alu_output[7:0];
                 //6'h18: ; //TxB, not implemented
-                6'h1A: sreg_TM0 <= alu_output[7:0];
-                6'h1B: sreg_TM1 <= alu_output[7:0];
-                //6'h28: sreg_ZCM <= alu_output[2:1];
-                6'h30: sreg_ETM0 <= alu_output[15:0];
-                6'h31: sreg_ETM1 <= alu_output[15:0];
+                6'h1A: spr_TM0 <= alu_output[7:0];
+                6'h1B: spr_TM1 <= alu_output[7:0];
+                //6'h28: spr_ZCM <= alu_output[2:1];
+                6'h30: spr_ETM0 <= alu_output[15:0];
+                6'h31: spr_ETM1 <= alu_output[15:0];
                 default: ;
             endcase 
         end 
         else if(mcuclk_pcen) begin
-            if(release_soft_stop) sreg_TMM <= 8'hFF;
+            if(release_soft_stop) spr_TMM <= 8'hFF;
         end
     end
 end
 
 always @(*) begin
     case(sr_rd_addr) 
-            6'h00: sreg_RDBUS = i_PA_I;
-            6'h01: sreg_RDBUS = i_PB_I;
-            6'h02: sreg_RDBUS = i_PC_I;
-            6'h03: sreg_RDBUS = i_PD_I; 
-            6'h05: sreg_RDBUS = i_PF_I;
-            6'h08: sreg_RDBUS = {3'b000, sreg_ANM};
-            //6'h09: sreg_RDBUS = sreg_SMH;
-            6'h0B: sreg_RDBUS = sreg_EOM;
-            6'h0D: sreg_RDBUS = sreg_TMM;
-            6'h19: sreg_RDBUS = 8'h00; //RxB, not implemented
-            6'h20: sreg_RDBUS = sreg_CR[0];
-            6'h21: sreg_RDBUS = sreg_CR[1];
-            6'h22: sreg_RDBUS = sreg_CR[2];
-            6'h23: sreg_RDBUS = sreg_CR[3];
-            6'h32: sreg_RDBUS = 8'h00; //ECNT, not yet implemented
-            6'h33: sreg_RDBUS = 8'h00; //ECPT, not yet implemented
-            default: sreg_RDBUS = 8'h00;
+            6'h00: spr_RDBUS = i_PA_I;
+            6'h01: spr_RDBUS = i_PB_I;
+            6'h02: spr_RDBUS = i_PC_I;
+            6'h03: spr_RDBUS = i_PD_I; 
+            6'h05: spr_RDBUS = i_PF_I;
+            6'h08: spr_RDBUS = {3'b000, spr_ANM};
+            //6'h09: spr_RDBUS = spr_SMH;
+            6'h0B: spr_RDBUS = spr_EOM;
+            6'h0D: spr_RDBUS = spr_TMM;
+            6'h19: spr_RDBUS = 8'h00; //RxB, not implemented
+            6'h20: spr_RDBUS = spr_CR[0];
+            6'h21: spr_RDBUS = spr_CR[1];
+            6'h22: spr_RDBUS = spr_CR[2];
+            6'h23: spr_RDBUS = spr_CR[3];
+            6'h32: spr_RDBUS = 8'h00; //ECNT, not yet implemented
+            6'h33: spr_RDBUS = 8'h00; //ECPT, not yet implemented
+            default: spr_RDBUS = 8'h00;
     endcase 
 end
 
@@ -1682,27 +1682,27 @@ end
 //////  ALU READ PORT MULTIPLEXERS
 ////
 
-reg     [15:0]  reg_RDBUS;
+reg     [15:0]  gpr_RDBUS;
 always @(*) begin
-    if(gpr_addr[4]) reg_RDBUS = 16'h0000;
+    if(gpr_addr[4]) gpr_RDBUS = 16'h0000;
     else begin
         case(gpr_addr[3:0])
-            4'h0: reg_RDBUS = {8'h00, reg_V};
-            4'h1: reg_RDBUS = {8'h00, reg_A};
-            4'h2: reg_RDBUS = {8'h00, reg_EAH};
-            4'h3: reg_RDBUS = {8'h00, reg_EAL};
-            4'h4: reg_RDBUS = {8'h00, reg_B};
-            4'h5: reg_RDBUS = {8'h00, reg_C};
-            4'h6: reg_RDBUS = {8'h00, reg_D};
-            4'h7: reg_RDBUS = {8'h00, reg_E};
-            4'h8: reg_RDBUS = {8'h00, reg_H};
-            4'h9: reg_RDBUS = {8'h00, reg_L};
-            4'hA: reg_RDBUS = reg_SP;
-            4'hB: reg_RDBUS = {reg_V, reg_A};
-            4'hC: reg_RDBUS = {reg_B, reg_C};
-            4'hD: reg_RDBUS = {reg_D, reg_E};
-            4'hE: reg_RDBUS = {reg_H, reg_L};
-            4'hF: reg_RDBUS = {reg_EAH, reg_EAL};
+            4'h0: gpr_RDBUS = {8'h00, reg_V};
+            4'h1: gpr_RDBUS = {8'h00, reg_A};
+            4'h2: gpr_RDBUS = {8'h00, reg_EAH};
+            4'h3: gpr_RDBUS = {8'h00, reg_EAL};
+            4'h4: gpr_RDBUS = {8'h00, reg_B};
+            4'h5: gpr_RDBUS = {8'h00, reg_C};
+            4'h6: gpr_RDBUS = {8'h00, reg_D};
+            4'h7: gpr_RDBUS = {8'h00, reg_E};
+            4'h8: gpr_RDBUS = {8'h00, reg_H};
+            4'h9: gpr_RDBUS = {8'h00, reg_L};
+            4'hA: gpr_RDBUS = reg_SP;
+            4'hB: gpr_RDBUS = {reg_V, reg_A};
+            4'hC: gpr_RDBUS = {reg_B, reg_C};
+            4'hD: gpr_RDBUS = {reg_D, reg_E};
+            4'hE: gpr_RDBUS = {reg_H, reg_L};
+            4'hF: gpr_RDBUS = {reg_EAH, reg_EAL};
         endcase
     end
 end
@@ -1827,17 +1827,17 @@ always @(*) begin
 
     if(mc_type == MCTYPE0) begin
         case(mc_sa_dst)
-            SA_DST_R      : alu_pa = reg_RDBUS; //{8'h00, reg_R};
-            SA_DST_R2     : alu_pa = reg_RDBUS; //{8'h00, reg_R2};
-            SA_DST_R1     : alu_pa = reg_RDBUS; //{8'h00, reg_R1};
-            SA_DST_RP2    : alu_pa = reg_RDBUS; //reg_RP2;
-            SA_DST_C      : alu_pa = reg_RDBUS; //{8'h00, reg_C};
-            SA_DST_SP     : alu_pa = reg_RDBUS; //reg_SP;
-            SA_DST_RP     : alu_pa = reg_RDBUS; //reg_RP;
-            SA_DST_RP1    : alu_pa = reg_RDBUS; //reg_RP1;
-            SA_DST_SR_SR1 : alu_pa = sreg_RDBUS;
-            SA_DST_SR2    : alu_pa = sreg_RDBUS;
-            SA_DST_SR3    : alu_pa = sreg_RDBUS;
+            SA_DST_R      : alu_pa = gpr_RDBUS; //{8'h00, reg_R};
+            SA_DST_R2     : alu_pa = gpr_RDBUS; //{8'h00, reg_R2};
+            SA_DST_R1     : alu_pa = gpr_RDBUS; //{8'h00, reg_R1};
+            SA_DST_RP2    : alu_pa = gpr_RDBUS; //reg_RP2;
+            SA_DST_C      : alu_pa = gpr_RDBUS; //{8'h00, reg_C};
+            SA_DST_SP     : alu_pa = gpr_RDBUS; //reg_SP;
+            SA_DST_RP     : alu_pa = gpr_RDBUS; //reg_RP;
+            SA_DST_RP1    : alu_pa = gpr_RDBUS; //reg_RP1;
+            SA_DST_SR_SR1 : alu_pa = spr_RDBUS;
+            SA_DST_SR2    : alu_pa = spr_RDBUS;
+            SA_DST_SR3    : alu_pa = spr_RDBUS;
             SA_DST_MDL    : alu_pa = {8'h00, reg_MDL};
             SA_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
             SA_DST_MA     : alu_pa = reg_MA;
@@ -1848,17 +1848,17 @@ always @(*) begin
         endcase
 
         case(mc_sb)
-            SB_R          : alu_pb = reg_RDBUS; //{8'h00, reg_R};
-            SB_R2         : alu_pb = reg_RDBUS; //{8'h00, reg_R2};
-            SB_R1         : alu_pb = reg_RDBUS; //{8'h00, reg_R1};
-            SB_RP2        : alu_pb = reg_RDBUS; //reg_RP2;
-            SB_RP         : alu_pb = reg_RDBUS; //reg_RP;
-            SB_RP1        : alu_pb = reg_RDBUS; //reg_RP1;
-            SB_RPA        : alu_pb = reg_RDBUS; //reg_RPA;
-            SB_RPA2       : alu_pb = reg_RDBUS; //reg_RPA2;
-            SB_SR_SR1     : alu_pb = sreg_RDBUS;
-            SB_SR2        : alu_pb = sreg_RDBUS;
-            SB_SR4        : alu_pb = sreg_RDBUS;
+            SB_R          : alu_pb = gpr_RDBUS; //{8'h00, reg_R};
+            SB_R2         : alu_pb = gpr_RDBUS; //{8'h00, reg_R2};
+            SB_R1         : alu_pb = gpr_RDBUS; //{8'h00, reg_R1};
+            SB_RP2        : alu_pb = gpr_RDBUS; //reg_RP2;
+            SB_RP         : alu_pb = gpr_RDBUS; //reg_RP;
+            SB_RP1        : alu_pb = gpr_RDBUS; //reg_RP1;
+            SB_RPA        : alu_pb = gpr_RDBUS; //reg_RPA;
+            SB_RPA2       : alu_pb = gpr_RDBUS; //reg_RPA2;
+            SB_SR_SR1     : alu_pb = spr_RDBUS;
+            SB_SR2        : alu_pb = spr_RDBUS;
+            SB_SR4        : alu_pb = spr_RDBUS;
             SB_MDH        : alu_pb = {8'h00, reg_MDH};
             SB_MD         : alu_pb = {reg_MDH, reg_MDL};
             SB_MDI        : alu_pb = reg_MDI;
@@ -1882,8 +1882,8 @@ always @(*) begin
     end
     else if(mc_type == MCTYPE1) begin
         case(mc_sc_dst)
-            SC_DST_R2     : alu_pa = reg_RDBUS; //{8'h00, reg_R2};
-            SC_DST_BC     : alu_pa = reg_RDBUS; //{reg_B, reg_C};
+            SC_DST_R2     : alu_pa = gpr_RDBUS; //{8'h00, reg_R2};
+            SC_DST_BC     : alu_pa = gpr_RDBUS; //{reg_B, reg_C};
             SC_DST_A      : alu_pa = {8'h00, reg_A};
             SC_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
             SC_DST_MDL    : alu_pa = {8'h00, reg_MDL};
@@ -1896,11 +1896,11 @@ always @(*) begin
         endcase
 
         case(mc_sd)
-            SD_BC         : alu_pb = reg_RDBUS; //{reg_B, reg_C};
-            SD_DE         : alu_pb = reg_RDBUS; //{reg_D, reg_E};
-            SD_HL         : alu_pb = reg_RDBUS; //{reg_H, reg_L};
-            SD_SP         : alu_pb = reg_RDBUS; //reg_SP;
-            SD_RPA        : alu_pb = reg_RDBUS; //reg_RPA;
+            SD_BC         : alu_pb = gpr_RDBUS; //{reg_B, reg_C};
+            SD_DE         : alu_pb = gpr_RDBUS; //{reg_D, reg_E};
+            SD_HL         : alu_pb = gpr_RDBUS; //{reg_H, reg_L};
+            SD_SP         : alu_pb = gpr_RDBUS; //reg_SP;
+            SD_RPA        : alu_pb = gpr_RDBUS; //reg_RPA;
             SD_A          : alu_pb = {8'h00, reg_A};
             SD_EA         : alu_pb = {reg_EAH, reg_EAL};
             SD_MDH        : alu_pb = {8'h00, reg_MDH};
@@ -2034,7 +2034,7 @@ end
 
 reg     [7:0]   alu_muldiv_r2_temp;
 always @(posedge emuclk) if(cycle_tick) begin
-    if(mc_type == MCTYPE1 && (mc_t1_alusel == 4'h4 || mc_t1_alusel == 4'h5)) alu_muldiv_r2_temp <= reg_RDBUS[7:0];
+    if(mc_type == MCTYPE1 && (mc_t1_alusel == 4'h4 || mc_t1_alusel == 4'h5)) alu_muldiv_r2_temp <= gpr_RDBUS[7:0];
 end
 
 wire    [15:0]  alu_mul_pa = {reg_EAH, reg_EAL};
@@ -2560,18 +2560,18 @@ end
 ////
 
 //port output enables
-assign o_PA_OE = ~sreg_MA;
-assign o_PB_OE = ~sreg_MB;
-assign o_PC_OE = ~sreg_MC;
-assign o_PD_OE = sreg_MM[0];
-assign o_PF_OE = ~sreg_MF;
+assign o_PA_OE = ~spr_MA;
+assign o_PB_OE = ~spr_MB;
+assign o_PC_OE = ~spr_MC;
+assign o_PD_OE = spr_MM[0];
+assign o_PF_OE = ~spr_MF;
 
 //port data
-assign o_PA_O = sreg_PAO;
-assign o_PB_O = sreg_PBO;
-assign o_PC_O = sreg_PCO;
-assign o_PD_O = sreg_PDO;
-assign o_PF_O = sreg_PFO;
+assign o_PA_O = spr_PAO;
+assign o_PB_O = spr_PBO;
+assign o_PC_O = spr_PCO;
+assign o_PD_O = spr_PDO;
+assign o_PF_O = spr_PFO;
 
 
 
@@ -2615,10 +2615,10 @@ always @(posedge emuclk) begin
            (~current_adc_mode[4] && adc_state_cntr == 8'd191)) begin
 
             //make a copy of the current ANM reg value
-            current_adc_mode <= sreg_ANM;
+            current_adc_mode <= spr_ANM;
 
             //scan mode/single ch mode select
-            if(sreg_ANM[0] != current_adc_mode[0]) adc_ch <= {sreg_ANM[3], 2'b00}; //if the mode has been changed, initialize the counter
+            if(spr_ANM[0] != current_adc_mode[0]) adc_ch <= {spr_ANM[3], 2'b00}; //if the mode has been changed, initialize the counter
             else adc_ch[1:0] <= adc_ch[1:0] == 2'b11 ? 2'b00 : adc_ch[1:0] + 2'b01; //count up
 
             //reset the adc state counter
@@ -2632,11 +2632,11 @@ always @(posedge emuclk) begin
         if(adc_state_cntr == 8'd0) adc_strobe_n <= 1'b0;
         else if(adc_state_cntr == 8'd127) begin
             adc_strobe_n <= current_adc_mode[4] ? 1'b1 : 1'b0;
-            if(current_adc_mode[4]) sreg_CR[adc_ch[1:0]] <= i_ANx_ANALOG_DATA;
+            if(current_adc_mode[4]) spr_CR[adc_ch[1:0]] <= i_ANx_ANALOG_DATA;
         end
         else if(adc_state_cntr == 8'd175) begin
             adc_strobe_n <= current_adc_mode[4] ? 1'b0 : 1'b1;
-            if(~current_adc_mode[4]) sreg_CR[adc_ch[1:0]] <= i_ANx_ANALOG_DATA;
+            if(~current_adc_mode[4]) spr_CR[adc_ch[1:0]] <= i_ANx_ANALOG_DATA;
         end
     end end
 end
@@ -2678,11 +2678,11 @@ end
 reg     [7:0]   timer0, timer1; //timer registersx`
 reg             tmff; 
 reg             timer0_cnt, timer1_cnt, tmff_toggle; //timer0/1 and tmff ticks
-wire            timer0_match = timer0_cnt & (timer0 == sreg_TM0) & (sr_wr_addr != 6'h1A); //this tick pokes the next DFFs
-wire            timer1_match = timer1_cnt & (timer1 == sreg_TM1) & (sr_wr_addr != 6'h1B);
+wire            timer0_match = timer0_cnt & (timer0 == spr_TM0) & (sr_wr_addr != 6'h1A); //this tick pokes the next DFFs
+wire            timer1_match = timer1_cnt & (timer1 == spr_TM1) & (sr_wr_addr != 6'h1B);
 wire            tmff_pcen = tmff_toggle & (tmff == 1'b0) & timer_tick; //TMFF postive edge clock enable
 wire            tmff_ncen = (tmff_toggle & (tmff == 1'b1) & timer_tick) | 
-                            ((sreg_TMM[1:0] == 2'b11) & (tmff == 1'b1) & timer_tick); //TMFF negative edge clock enable
+                            ((spr_TMM[1:0] == 2'b11) & (tmff == 1'b1) & timer_tick); //TMFF negative edge clock enable
 assign is_TIMER0 = ~soft_stop_flag & timer0_match & timer_tick;
 assign is_TIMER1 = ~soft_stop_flag & timer1_match & timer_tick;
 assign release_soft_stop = soft_stop_flag & timer1_match & timer_tick; //release soft stop
@@ -2690,21 +2690,21 @@ assign o_TO = tmff;
 assign o_TO_PCEN = tmff_pcen;
 assign o_TO_NCEN = tmff_ncen;
 always @(*) begin
-    case(sreg_TMM[3:2])
+    case(spr_TMM[3:2])
         2'b00: timer0_cnt = timer_div12;
         2'b01: timer0_cnt = timer_div384;
         2'b10: timer0_cnt = ti_nedet;
         2'b11: timer0_cnt = 1'b0;
     endcase
 
-    case(sreg_TMM[6:5])
+    case(spr_TMM[6:5])
         2'b00: timer1_cnt = timer_div12;
         2'b01: timer1_cnt = timer_div384;
         2'b10: timer1_cnt = ti_nedet;
         2'b11: timer1_cnt = timer0_match;
     endcase
 
-    case(sreg_TMM[1:0])
+    case(spr_TMM[1:0])
         2'b00: tmff_toggle = timer0_match;
         2'b01: tmff_toggle = timer1_match;
         2'b10: tmff_toggle = 1'b1; //toggle at every timer_tick(fs/3)
@@ -2724,25 +2724,25 @@ always @(posedge emuclk) begin
     end
     else begin if(timer_tick) begin //use timer tick(fs/3)
         //define timer 0 behavior
-        if(sreg_TMM[4]) timer0 <= 8'h01;
+        if(spr_TMM[4]) timer0 <= 8'h01;
         else begin
             if(timer0_cnt) begin
-                if(timer0 == sreg_TM0 && sr_wr_addr != 6'h1A) timer0 <= 8'h01; //no comparison is performed while updating TM0, see datasheet p79
+                if(timer0 == spr_TM0 && sr_wr_addr != 6'h1A) timer0 <= 8'h01; //no comparison is performed while updating TM0, see datasheet p79
                 else timer0 <= timer0 == 8'hFF ? 8'h00 : timer0 + 8'h01;
             end
         end
 
         //define timer 1 behavior
-        if(sreg_TMM[7]) timer1 <= 8'h01;
+        if(spr_TMM[7]) timer1 <= 8'h01;
         else begin
             if(timer1_cnt) begin
-                if(timer1 == sreg_TM1 && sr_wr_addr != 6'h1B) timer1 <= 8'h01; //no comparison is performed while updating TM1
+                if(timer1 == spr_TM1 && sr_wr_addr != 6'h1B) timer1 <= 8'h01; //no comparison is performed while updating TM1
                 else timer1 <= timer1 == 8'hFF ? 8'h00 : timer1 + 8'h01;
             end
         end
 
         //define tmff behavior
-        if(sreg_TMM[1:0] == 2'b11) tmff <= 1'b0;
+        if(spr_TMM[1:0] == 2'b11) tmff <= 1'b0;
         else begin
             if(tmff_toggle) tmff <= ~tmff;
         end
@@ -2780,7 +2780,7 @@ end
 //event counter
 reg             event_cntr_cnt;
 always @(*) begin
-    case(sreg_ETMM[1:0])
+    case(spr_ETMM[1:0])
         2'b00: event_cntr_cnt = timer_div12;
         2'b01: event_cntr_cnt = timer_div12 & ci_state;
         2'b10: event_cntr_cnt = ci_nedet;
@@ -2790,8 +2790,8 @@ end
 
 reg     [15:0]  event_cntr;
 wire    [16:0]  event_cntr_next = event_cntr + 16'd1;
-wire            cntr0_match = event_cntr_cnt & (event_cntr_next[15:0] == sreg_ETM0) & (sr_wr_addr != 6'h30);
-wire            cntr1_match = event_cntr_cnt & (event_cntr_next[15:0] == sreg_ETM1) & (sr_wr_addr != 6'h31);
+wire            cntr0_match = event_cntr_cnt & (event_cntr_next[15:0] == spr_ETM0) & (sr_wr_addr != 6'h30);
+wire            cntr1_match = event_cntr_cnt & (event_cntr_next[15:0] == spr_ETM1) & (sr_wr_addr != 6'h31);
 assign is_CNTR0 = cntr0_match & timer_tick;
 assign is_CNTR1 = cntr1_match & timer_tick;
 assign is_nCNTRCIN = ci_nedet;
@@ -2801,11 +2801,11 @@ always @(posedge emuclk) begin
         event_cntr <= 16'd0;
     end
     else begin if(timer_tick) begin 
-        case(sreg_ETMM[3:2])
+        case(spr_ETMM[3:2])
             2'b00: event_cntr <= 16'd0;
             2'b01: event_cntr <= event_cntr_cnt ? event_cntr_next[15:0] : event_cntr;
             2'b10: begin
-                if(sreg_ETMM[1]) begin
+                if(spr_ETMM[1]) begin
                     if(tmff_ncen) event_cntr <= 16'd0;
                     else event_cntr <= event_cntr_cnt ? event_cntr_next[15:0] : event_cntr;
                 end
@@ -2816,7 +2816,7 @@ always @(posedge emuclk) begin
             end
             2'b11: begin
                 if(event_cntr_cnt) begin
-                    if(event_cntr_next[15:0] == sreg_ETM1) event_cntr <= 16'd0;
+                    if(event_cntr_next[15:0] == spr_ETM1) event_cntr <= 16'd0;
                     else event_cntr <= event_cntr_next[15:0];
                 end
             end 

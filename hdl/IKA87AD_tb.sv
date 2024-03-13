@@ -60,6 +60,7 @@ wire            cpu_rd_n, cpu_wr_n;
 wire    [7:0]   cpu_do;
 reg     [7:0]   dbus;
 
+/*
 //test memory section
 reg     [7:0]   testmem[0:511];
 wire    [8:0]   testmem_addr = cpu_addr[8:0];
@@ -68,8 +69,9 @@ wire            testmem_rd_n = cpu_rd_n;
 reg     [7:0]   testmem_dout;
 initial $readmemh("IKA87AD_testmem.txt", testmem);
 always @(*) testmem_dout = testmem_cs_n || testmem_rd_n ? 8'hZZ : testmem[testmem_addr];
+*/
 
-/*
+
 //bootloader section
 reg     [7:0]   bootloader[0:4095];
 wire    [11:0]  bootloader_addr = cpu_addr[11:0];
@@ -78,7 +80,7 @@ wire            bootloader_rd_n = cpu_rd_n;
 reg     [7:0]   bootloader_dout;
 initial $readmemh("cchip_bootloader.txt", bootloader);
 always @(*) bootloader_dout = bootloader_cs_n || bootloader_rd_n ? 8'hZZ : bootloader[bootloader_addr];
-*/
+
 
 //embedded memory section
 reg     [7:0]   ram[0:255];
@@ -102,8 +104,8 @@ always @(*) begin
 
     if(!cpu_wr_n) dbus = cpu_do;
     else if(!cpu_rd_n) begin
-        //if(!bootloader_cs_n) dbus = bootloader_dout;
-        if(!testmem_cs_n) dbus = testmem_dout;
+        if(!bootloader_cs_n) dbus = bootloader_dout;
+        //if(!testmem_cs_n) dbus = testmem_dout;
         else if(!ram_cs_n) dbus = ram_dout;
         else if(cpu_addr == 16'h1401) dbus = 8'hEE;
     end
@@ -131,6 +133,7 @@ IKA87AD u_dut (
     .i_DI                           (dbus                       ),
     .o_DO                           (cpu_do                     ),
     .o_PD_DO_OE                     (                           ),
+    .o_D_nA_SEL                     (                           ),
     .o_DO_OE                        (                           ),
 
     .o_REG_MM                       (                           ),
@@ -141,6 +144,8 @@ IKA87AD u_dut (
 
     .i_TI                           (1'b0                       ),
     .o_TO                           (                           ),
+    .o_TO_PCEN                      (                           ),
+    .o_TO_NCEN                      (                           ),
 
     .i_CI                           (CI                         ),
 
@@ -155,6 +160,7 @@ IKA87AD u_dut (
     .i_PC_I                         (8'hAC                      ),
     .o_PC_O                         (                           ),
     .o_PC_OE                        (                           ),
+    .o_REG_MCC                      (                           ),
 
     .i_PD_I                         (8'hC8                      ),
     .o_PD_O                         (                           ),
@@ -173,13 +179,13 @@ IKA87AD u_dut (
 
 
 initial begin
-    #10000 NMI_n = 1'b0;
-    #800 NMI_n = 1'b1;
+    //#10000 NMI_n = 1'b0;
+    //#800 NMI_n = 1'b1;
     //#800 INT1 = 1'b1; INT2_n = 1'b0;
     //#400 INT1 = 1'b0; INT2_n = 1'b1;
 end
 
-always #3000 CI = ~CI;
+//always #3000 CI = ~CI;
 
 
 /*

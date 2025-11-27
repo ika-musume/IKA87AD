@@ -128,37 +128,38 @@ wire    [17:0]  mcrom_data; //ROM output, registered
 reg     [17:0]  mc_ctrl_output; //combinational
 
 //fixed fields
-wire    [1:0]   mc_type = mc_ctrl_output[17:16];
-wire            mc_alter_flag = mcrom_data[15];
-wire            mc_jump_to_next_inst = mcrom_data[14];
+wire    [1:0]   mc_type             = mc_ctrl_output[17:16];
+wire            mc_alter_flag       = mcrom_data[15];
+wire            mc_jmp_to_next_inst = mcrom_data[14];
 
 //bus control signals
-wire    [1:0]   mc_next_bus_acc = mc_ctrl_output[1:0];
+wire    [1:0]   mc_next_bus_acc     = mc_ctrl_output[1:0];
 
 //MICROCODE TYPE 0 FIELDS
-wire    [4:0]   mc_sb = mc_ctrl_output[13:9]; //microcode type 0, source b
-wire    [4:0]   mc_sa_dst = mc_ctrl_output[8:4]; //microcode type 0, source a
-wire    [1:0]   mc_t0_alusel = mc_ctrl_output[3:2];
+wire    [3:0]   mc_t0_src           = mc_ctrl_output[13:10];
+wire    [3:0]   mc_t0_dst           = mc_ctrl_output[9:6];
+wire    [3:0]   mc_t0_deusel        = mc_ctrl_output[5:2];
 
 //MICROCODE TYPE 1 FIELDS
-wire    [3:0]   mc_sd = mc_ctrl_output[13:10]; //microcode type 1, source d
-wire    [3:0]   mc_sc_dst = mc_ctrl_output[9:6]; //microcode type 1, source c
-wire    [3:0]   mc_t1_alusel = mc_ctrl_output[5:2];
+wire    [3:0]   mc_t1_src           = mc_ctrl_output[13:10];
+wire    [3:0]   mc_t1_dst           = mc_ctrl_output[9:6];
+wire    [3:0]   mc_t1_aeusel        = mc_ctrl_output[5:2];
 
 //MICROCODE TYPE 2 FIELDS
-wire            mc_bk_carry_ctrl = mc_ctrl_output[9];
-wire            mc_bk_irq_ctrl   = mc_ctrl_output[8];
-wire    [1:0]   mc_bk_reg_exchg  = mc_ctrl_output[7:6];
-wire            mc_bk_cpu_susp   = mc_ctrl_output[5];
-wire    [2:0]   mc_bk_skip_ctrl  = mc_ctrl_output[4:2];
+wire            mc_t2_atype_sel     = mc_ctrl_output[12:10];
+wire            mc_t2_carry_ctrl    = mc_ctrl_output[9];
+wire            mc_t2_irq_ctrl      = mc_ctrl_output[8];
+wire    [1:0]   mc_t2_reg_exchg     = mc_ctrl_output[7:6];
+wire            mc_t2_cpu_susp      = mc_ctrl_output[5];
+wire    [2:0]   mc_t2_skip_ctrl     = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
-wire    [4:0]   mc_s_nop         = mcrom_data[13:9];
-wire            mc_s_cond_pc_dec = mc_ctrl_output[8];
-wire            mc_s_cond_read   = mc_ctrl_output[7];
-wire    [2:0]   mc_s_bra_on_alu  = mc_ctrl_output[6:4];
-wire            mc_s_swap_md_out = mc_ctrl_output[3];
-wire            mc_s_ird         = mc_ctrl_output[2];
+wire    [4:0]   mc_t3_nop           = mcrom_data[13:9];
+wire            mc_t3_cond_pc_dec   = mc_ctrl_output[8];
+wire            mc_t3_cond_read     = mc_ctrl_output[7];
+wire    [2:0]   mc_t3_bra_on_alu    = mc_ctrl_output[6:4];
+wire            mc_t3_swap_md_out   = mc_ctrl_output[3];
+wire            mc_t3_ird           = mc_ctrl_output[2];
 
 //ALU FIELDS
 wire    [3:0]   arith_code = opcode_page == 3'd0 ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
@@ -166,7 +167,7 @@ wire            is_arith_eval_op = arith_code > 4'h9; //is an arithmetic code th
 wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]};
 
 //END OF INSTRUCTION
-wire            mc_end_of_instruction = mc_next_bus_acc == RD4 && !(mc_type == MCTYPE3 && mc_s_ird);
+wire            mc_end_of_instruction = mc_next_bus_acc == RD4 && !(mc_type == MCTYPE3 && mc_t3_ird);
 
 
 
@@ -187,7 +188,8 @@ wire    cycle_tick = opcode_tick | rw_tick;
 assign  mcrom_read_tick = (timing_sr[8] | timing_sr[11]) & mcuclk_pcen;
 
 wire    opcode_inlatch_tick = timing_sr[6] & current_bus_acc == RD4 & mcuclk_pcen;
-wire    md_inlatch_tick = timing_sr[6] & current_bus_acc == RD3 & mcuclk_pcen;
+wire    md_inlatch_tick  = timing_sr[6] & current_bus_acc == RD3 & mcuclk_pcen;
+wire    md_outlatch_tick = timing_sr[2] & current_bus_acc == WR3 & mcuclk_pcen;
 wire    full_opcode_inlatch_tick_debug = timing_sr[6] & (current_bus_acc == RD4 | current_bus_acc == RD3) & mcuclk_pcen;
 
 always @(posedge emuclk) begin
@@ -280,7 +282,7 @@ wire            softi_proc_cyc = opcode_page == 3'd0 && reg_OPCODE == 8'h72;
 wire            hardi_proc_cyc = opcode_page == 3'd0 && reg_OPCODE == 8'h73;
 
 //A user should ack an iflag manually when both interrupt sources belonging to a same irq level are not masked
-wire            iflag_manual_ack = mc_type == MCTYPE2 && mc_bk_skip_ctrl[2:1] == 2'b11; 
+wire            iflag_manual_ack = mc_type == MCTYPE2 && mc_t2_skip_ctrl[2:1] == 2'b11; 
 
 //An iflag is acknowledged when the HARDI instruction starts
 wire            iflag_auto_ack = hardi_proc_cyc && mc_end_of_instruction;
@@ -338,7 +340,7 @@ IKA87AD_flag u_adc          (mrst_n, emuclk, mcuclk_pcen, cycle_tick, is[8], irq
 //interrupt generation
 reg     [2:0]   irq_lv_z;
 reg             irq_pending;
-wire            irq_detected = (irq_pending & irq_lv < 3'd7 & irq_enabled) | (irq_pending & irq_lv == 3'd7);
+wire            irq_det = (irq_pending & irq_lv < 3'd7 & irq_enabled) | (irq_pending & irq_lv == 3'd7);
 always @(posedge emuclk) if(mcuclk_pcen) begin
     irq_lv_z <= irq_lv;
 end
@@ -364,7 +366,7 @@ always @(posedge emuclk) begin
         force_exec_hardi <= 1'b0; 
     end
     else begin if(cycle_tick) begin
-        if(irq_detected && mc_end_of_instruction) force_exec_hardi <= 1'b1;
+        if(irq_det && mc_end_of_instruction) force_exec_hardi <= 1'b1;
         else force_exec_hardi <= 1'b0;
     end end
 end
@@ -375,7 +377,7 @@ always @(posedge emuclk) begin
     else begin if(cycle_tick) begin
         if(hardi_proc_cyc) irq_enabled <= 1'b0;
         else begin
-            if(mc_type == MCTYPE2 && mc_bk_irq_ctrl == 1'b1) irq_enabled <= ~reg_OPCODE[4];
+            if(mc_type == MCTYPE2 && mc_t2_irq_ctrl == 1'b1) irq_enabled <= ~reg_OPCODE[4];
         end
     end end
 end
@@ -438,24 +440,21 @@ end
 ////
 
 //stop pin sync chain
-reg     [1:0]       stop_syncchain;
-always @(posedge emuclk) if(mcuclk_pcen) begin
-    stop_syncchain[0] <= ~i_STOP_n;
-    stop_syncchain[1] <= stop_syncchain[0];
-end
+reg     [1:0]       stop_sync;
+always @(posedge emuclk) if(mcuclk_pcen) stop_sync <= {stop_sync[0], ~i_STOP_n};
 
 //halt/stop detection
-wire                soft_halt_detected = mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B;
-wire                soft_stop_detected = mc_type == MCTYPE2 && mc_bk_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'hBB;
-wire                hard_stop_detected = mc_end_of_instruction && stop_syncchain[1];
-wire                susp_detected = soft_halt_detected | soft_stop_detected | hard_stop_detected;
+wire                soft_halt_det = mc_type == MCTYPE2 && mc_t2_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'h3B;
+wire                soft_stop_det = mc_type == MCTYPE2 && mc_t2_cpu_susp && opcode_page == 3'd1 && reg_OPCODE == 8'hBB;
+wire                hard_stop_det = mc_end_of_instruction && stop_sync[1];
+wire                susp_det = soft_halt_det | soft_stop_det | hard_stop_det;
 
 //force exec nop
 reg             force_exec_nop;
 always @(posedge emuclk) begin
     if(!mrst_n) force_exec_nop <= 1'b0;
     else begin if(cycle_tick) begin
-        if(mc_end_of_instruction) force_exec_nop <= susp_detected;
+        if(mc_end_of_instruction) force_exec_nop <= susp_det;
     end end
 end
 
@@ -471,7 +470,7 @@ always @(posedge emuclk) begin
         if(mcuclk_pcen) begin
             hstop_osc_unstable_z <= hstop_osc_unstable;
 
-            if(stop_syncchain[1]) begin
+            if(stop_sync[1]) begin
                 hstop_osc_unstable <= 1'b1;
             end
             else begin
@@ -483,7 +482,7 @@ always @(posedge emuclk) begin
     end
 
     if(mcuclk_pcen) begin
-        if(stop_syncchain) begin
+        if(stop_sync) begin
             hstop_osc_wait <= 20'd0;
         end
         else begin
@@ -507,14 +506,14 @@ always @(posedge emuclk) begin
             if(mcuclk_pcen) if((irq_lv != 3'd1) && (irq_lv != irq_lv_z)) halt_flag <= 1'b0;
         end
         else begin
-            if(cycle_tick) if(soft_halt_detected) halt_flag <= 1'b1;
+            if(cycle_tick) if(soft_halt_det) halt_flag <= 1'b1;
         end
         
         if(soft_stop_flag) begin
             if(mcuclk_pcen) if(release_soft_stop) soft_stop_flag <= 1'b0;
         end
         else begin
-            if(cycle_tick) if(soft_stop_detected) soft_stop_flag <= 1'b1;
+            if(cycle_tick) if(soft_stop_det) soft_stop_flag <= 1'b1;
         end
 
         //According to the datasheet on page 178, if RST is asserted before the oscillator has stabilized,
@@ -523,7 +522,7 @@ always @(posedge emuclk) begin
             if(mcuclk_pcen) hard_stop_flag <= hstop_osc_unstable == 1'b0 && hstop_osc_unstable_z == 1'b1 ? 1'b0 : 1'b1; //release stop
         end
         else begin
-            if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_syncchain[1];
+            if(cycle_tick) if(mc_end_of_instruction) hard_stop_flag <= stop_sync[1];
         end
     end
 end
@@ -579,8 +578,8 @@ always @(posedge emuclk) begin
                     mseq_state <= mseq_state;
                     mseq_cntr <= mseq_cntr_next;
 
-                    if(mc_type == MCTYPE3 && mc_s_nop[4]) begin
-                        if(mseq_susp_timer == mc_s_nop[3:0]) mseq_susp_timer <= 4'd0;
+                    if(mc_type == MCTYPE3 && mc_t3_nop[4]) begin
+                        if(mseq_susp_timer == mc_t3_nop[3:0]) mseq_susp_timer <= 4'd0;
                         else mseq_susp_timer <= mseq_susp_timer + 4'd1;
                     end
                     else begin
@@ -597,12 +596,12 @@ always @(posedge emuclk) begin
 end
 
 always @(*) begin
-    if(mc_type == MCTYPE3 && mc_s_nop[4]) begin
-        if(mseq_susp_timer == mc_s_nop[3:0]) mseq_cntr_next = mseq_cntr + 3'd1;
+    unique if(mc_type == MCTYPE3 && mc_t3_nop[4]) begin
+        if(mseq_susp_timer == mc_t3_nop[3:0]) mseq_cntr_next = mseq_cntr + 3'd1;
         else mseq_cntr_next = mseq_cntr;
     end
-    else if(mc_type == MCTYPE3 && mc_s_bra_on_alu != 3'd0 ) begin
-        if(is_arith_eval_op || arith_code == 4'h0) mseq_cntr_next = mseq_cntr + mc_s_bra_on_alu + 3'd1; //eval op + 00(move)
+    else if(mc_type == MCTYPE3 && mc_t3_bra_on_alu != 3'd0 ) begin
+        if(is_arith_eval_op || arith_code == 4'h0) mseq_cntr_next = mseq_cntr + mc_t3_bra_on_alu + 3'd1; //eval op + 00(move)
         else mseq_cntr_next = mseq_cntr + 3'd1;
     end
     else begin
@@ -632,82 +631,56 @@ IKA87AD_microcode u_microcode (
 /*
     MICROCODE TYPE DESCRIPTION
 
-    1. ALU-REGISTER 1
-    00_X_X_XXXXX_XXXXX_XX_XX
+    1. DATA EXECUTION CONTROL
+    00_X_X_XXXX_XXXX_XXXX_XX
 
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:9] source B
-        00000: (b) r, OPCODE[]         
-        00001: (b) r2, OPCODE[]
-        00010: (b) r1, OPCODE[]
-        00011: (w) rp2, OPCODE[]
-        00100: (w) rp, OPCODE[]
-        00101: (w) rp1, OPCODE[]
-        00110: (w) RPA*
-        00111: (w) RPA2*
-        01000: () sr4, OPCODE[0]
-        01001: (b) MD_high_byte
-        01010: (w) MD_word
-        01011: (w) MD_spare(MDI)
-        01100: (b) A
-        01101: (w) EA
-        01110: 
-        01111: 
-        10000: (w) ADDR_IM
-        10001: (w) ADDR_V_WA 
-        10010: (w) ADDR_TA
-        10011: (w) ADDR_FA   
-        10100: (w) ADDR_REL_S
-        10101: (w) ADDR_REL_L
-        10110: (w) *ADDR_INT, interrupt address, including software interrupt
-        10111: (w) -2
-        11000: (w) -1
-        11001: (w) 0
-        11010: (w) 1
-        11011: (w) 2
-        11100: (w) ALU temp register 
-        11101: (b) sr/sr1, OPCODE[]
-        11110: () sr2, OPCODE[]
-        11111: (w) *RPA_OFFSET, rpa2/rpa3 A, B, EA, byte addend select
-    D[8:4] source A, destination register type, decoded by the external circuit, :
-        00000: (b) r, OPCODE[]         
-        00001: (b) r2, OPCODE[]
-        00010: (b) r1, OPCODE[]
-        00011: (w) rp2, OPCODE[]
-        00100: (w) rp, OPCODE[]
-        00101: (w) rp1, OPCODE[]
-        00110: (b) C 
-        00111: (w) SP
-        01000: (w) sr3, OPCODE[0]
-        01001: (b) MD_low_byte
-        01010: (w) MD_word
-        01011: (w) MA
-        01100: (b) A
-        01101: (w) EA 
-        01110: (w) PC
-        01111:     sr/sr1, OPCODE[]
-        10000:     sr2, OPCODE[]
-        10001:
-        10010:
-        10011:
-        10100:
-        10101:
-        10110:
-        10111:
-        11000:
-        11001:
-        11010:
-        11011: 
-        11100: 
-        11101: 
-        11110: 
-        11111: 
-    D[3:2] ALU operation type:
-        00: bypass(source2 -> source1)
-        01: add
-        1X: ALU operation - OPCODE[6:3] / OPCODE[6:4], OPCODE[0] (single byte inst) 
+    D[13:10] source
+        0000: (b) r         
+        0001: (b) r2
+        0010: (b) r1
+        0011: (w) rp2
+        0100: (w) rp
+        0101: (w) rp1
+        0110: (b/w) sr/sr1/sr2/sr4
+        0111: (w) PSW
+        1000: (w) MD(word, memory data high+low)
+        1001: (b) MD0
+        1010: 
+        1011: (w) ALU aux register
+        1100: (b) A
+        1101:
+        1110: (w) EA
+        1111: 
+    D[9:6] destination, decoded by the external circuit
+        0000: (b) r         
+        0001: (b) r2
+        0010: (b) r1
+        0011: (w) rp2
+        0100: (w) rp
+        0101: (w) rp1
+        0110: (b/w) sr/sr1/sr2/sr3
+        0111: (w) PSW
+        1000: (w) MD(word, memory data high+low)
+        1001: (b) MD0
+        1010: (b) MD1
+        1011: 
+        1100: (b) A 
+        1101: (b) C 
+        1110: (w) EA
+        1111: (w) BC
+    D[5:2] ALU operation type:
+        0000: bypass
+        0001: INC
+        0010: DEC
+        0011: DAA
+        0100: ROT(decode 0x48 page ALU operations)
+        0101: SHFT
+        0110: MUL
+        0111: DIV
+        1000: common ALU operations(bitwise/arithmetic)
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -717,63 +690,41 @@ IKA87AD_microcode u_microcode (
     *automatically decoded by external logic
 
 
-    2. ALU-REGISTER 2
+    2. ADDRESS EXECUTION CONTROL
     01_X_X_XXXX_XXXX_XXXX_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:10] source D
-    0000: BC
-    0001: DE
-    0010: HL
-    0011: SP
-    0100: RPA
-    0101: reg_R2
-    0110:
-    0111:
-    1000: PC
-    1001: PSW
-    1010: MD_high_byte
-    1011: MD_word
-    1100: A
-    1101: EA
-    1110: 
-    1111: NO_SOURCE
-    D[9:6] source C, destination
-    0000: (w) BC
-    0001: (b) r2
-    0010:     
-    0011: 
-    0100: 
-    0101: 
-    0110: 
-    0111:     NOWHERE
-    1000: (w) MA
-    1001: (w) MD_word
-    1010: (b) MD_low_byte
-    1011: (b) MD_high_byte    
-    1100: (b) A
-    1101: (w) EA
-    1110: (b) PSW
-    1111:     PC
-
+    D[13:10] source
+        0000: (w) ADDR_IM
+        0001: (w) ADDR_V_WA 
+        0010: (w) ADDR_TA
+        0011: (w) ADDR_FA   
+        0100: (w) ADDR_REL_S
+        0101: (w) ADDR_REL_L
+        0110: (w) *ADDR_INT, interrupt address, including software interrupt
+        0111: (w) *RPA_OFFSET, rpa2/rpa3 A, B, EA, byte addend select
+        1000: (w) RPA
+        1001: (w) RPA2
+        1010: (w) BC
+        1011: (w) DE
+        1100: (w) HL
+        1101: (w) SP
+        1110: (w) PC
+        1111: (w) MA
+    D[9:6] destination
+        1000: (w) RPA
+        1101: (w) MD
+        1110: (w) PC
+        1111: (w) MA
+        
     D[5:2] ALU operation type:
-    0000: bypass
-    0001: NEGA(negate)
-    0010: DAA(what the fuck is that)
-    0011: RLD(rotate left digit)
-    0100: MUL
-    0101: DIV
-    0110:
-    0111: shift operation, OPCODE[7], OPCODE[2], OPCODE[5:4], 
-    1000: (-A)push operation: alu out=A-1, ma out=A-1
-    1001: (A+)pop operation: alu out=A+1, ma out=A
-    1010: rpa auto decrement/increment operation, use opcode field
-    1011: INC +0x01
-    1100: DEC +0xFF
-    1101:
-    1110:
-    1111:
+        0000: bypass
+        0001: add
+        0010: rpa increment/decrement
+        0011: rpa3 increment
+        0100: (-A)push operation on the bus: aeu out=A-1, ma out=A-1
+        0101: (A+)pop operation on the bus: aeu out=A+1, ma out=A
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -786,7 +737,14 @@ IKA87AD_microcode u_microcode (
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:10]: reserved
+    D[13]: reserved
+    D[12:10]: address type select
+       000: IA(immediate address)
+       001: WA(WA offset)
+       100: SRNUM D[5:0]
+       101: SR2NUM {D[7],D[2:0]}
+       110: SR3NUM D[0]
+       111: SR4NUM D[0]
     D[9]: CARRY MOD
     D[8]: INTERRUPT E/D
     D[7:6]: EXCHANGE
@@ -820,7 +778,7 @@ IKA87AD_microcode u_microcode (
     D[8]: conditional PC decrement(BLOCK)
     D[7]: conditional read(rpa+byte or register)
     D[6:4]: conditional branch on ALU type, branch+ steps
-    D[3]: swap MD output order
+    D[3]: reserved
     D[2]: 1st cycle of 2-byte instruction
     D[1:0] current bus transaction type :
         00: IDLE
@@ -832,274 +790,306 @@ IKA87AD_microcode u_microcode (
 */
 
 
+SP<-SP+가 실행되면 버스 컨트롤러가 MA<-?가 실행될때까지 스택 동작을 반복하는걸로 교체
+
+
+
+
+
+
 ///////////////////////////////////////////////////////////
-//////  ALU OUTPUT/GPR ACCESS ADDRESS REMAPPER
+//////  GPR RW ADDRESS REMAPPER
 ////
-
-//
-//  ALU
-//
-
-reg     [15:0]  alu_output; //ALU output
-reg     [15:0]  alu_ma_output; //ALU output for the memory address register
-reg     [15:0]  alu_temp_output; //ALU temp register
-reg             alu_muldiv_reg_TEMP_wr, alu_digrot_TEMP_wr, alu_muldiv_reg_EA_wr;
-wire            reg_TEMP_wr = alu_muldiv_reg_TEMP_wr | alu_digrot_TEMP_wr;
-
-
-//
-//  GPR ACCESS ADDRESS
-//
 
 /*
     COMMON READ BUS
-    4'h0: {8'h00, reg_V} - r
-    4'h1: {8'h00, reg_A} - r
-    4'h2: {8'h00, reg_EAH} - r1
-    4'h3: {8'h00, reg_EAL} - r1
-    4'h4: {8'h00, reg_B} - common
-    4'h5: {8'h00, reg_C} - common
-    4'h6: {8'h00, reg_D} - common
-    4'h7: {8'h00, reg_E} - common
-    4'h8: {8'h00, reg_H} - common
-    4'h9: {8'h00, reg_L} - common
-    4'hA: reg_SP - rp, rp2
-    4'hB: {reg_V, reg_A} - rp1
-    4'hC: {reg_B, reg_C} - common
-    4'hD: {reg_D, reg_E} - common
-    4'hE: {reg_H, reg_L} - common
-    4'hF: {reg_EAH, reg_EAL} - common
 
-    A READ BUS
-    {8'h00, reg_A}
+    aaa = register address
+    w = word mode
+    s = byte select (valid only if the w is 0)
 
-    EA READ BUS
-    {reg_EAH, reg_EAL}
+    aaa w s
+    000_0_0:   V   V (b) //GPRBUS_xV_b
+    000_0_1:   V   A (b) //GPRBUS_xA_b
+    000_1_X:   V   A (w) //GPRBUS_VA_w
+    001_0_0:   B   B (b) //GPRBUS_xB_b
+    001_0_1:   B   C (b) //GPRBUS_xC_b
+    001_1_X:   B   C (w) //GPRBUS_BC_w
+    010_0_0:   D   D (b) //GPRBUS_xD_b
+    010_0_1:   D   E (b) //GPRBUS_xE_b
+    010_1_X:   D   E (w) //GPRBUS_DE_w
+    011_0_0:   H   H (b) //GPRBUS_xH_b
+    011_0_1:   H   L (b) //GPRBUS_xL_b
+    011_1_X:   H   L (w) //GPRBUS_HL_w
+    10X_0_0: EAH EAH (b) //GPRBUS_EH_b
+    10X_0_1:   E   A (b) //GPRBUS_EL_b
+    10X_1_X:   E   A (w) //GPRBUS_EA_w
+    11X_0_0: SPH SPH (b)
+    11X_0_1:   S   P (b)
+    11X_1_X:   S   P (w) //GPRBUS_SP_w
 */
 
-//determines which fields in the microcode are used to read the register file
-reg     [2:0]   gpr_acc_mode;
-always @(*) begin
-    gpr_acc_mode = 3'd4;
-    
+//Type r decoder
+function automatic logic [4:0] dec_gpr_r(input logic [2:0] opcode);
+    case(opcode)
+        3'b000: dec_gpr_r = GPRBUS_xV_b;
+        3'b001: dec_gpr_r = GPRBUS_xA_b;
+        3'b010: dec_gpr_r = GPRBUS_xB_b;
+        3'b011: dec_gpr_r = GPRBUS_xC_b;
+        3'b100: dec_gpr_r = GPRBUS_xD_b;
+        3'b101: dec_gpr_r = GPRBUS_xE_b;
+        3'b110: dec_gpr_r = GPRBUS_xH_b;
+        3'b111: dec_gpr_r = GPRBUS_xL_b;
+    endcase
+endfunction
+
+//Type r1 decoder
+function automatic logic [4:0] dec_gpr_r1(input logic [2:0] opcode);
+    case(opcode)
+        3'b000: dec_gpr_r1 = GPRBUS_EH_b;
+        3'b001: dec_gpr_r1 = GPRBUS_EL_b;
+        3'b010: dec_gpr_r1 = GPRBUS_xB_b;
+        3'b011: dec_gpr_r1 = GPRBUS_xC_b;
+        3'b100: dec_gpr_r1 = GPRBUS_xD_b;
+        3'b101: dec_gpr_r1 = GPRBUS_xE_b;
+        3'b110: dec_gpr_r1 = GPRBUS_xH_b;
+        3'b111: dec_gpr_r1 = GPRBUS_xL_b;
+    endcase
+endfunction
+
+//Type r2 decoder
+function automatic logic [4:0] dec_gpr_r2(input logic [1:0] opcode);
+    case(opcode)
+        2'b00: dec_gpr_r2 = GPRBUS_xV_b; //not specified
+        2'b01: dec_gpr_r2 = GPRBUS_xA_b;
+        2'b10: dec_gpr_r2 = GPRBUS_xB_b;
+        2'b11: dec_gpr_r2 = GPRBUS_xC_b;
+    endcase
+endfunction
+
+//Type rp2 decoder
+function automatic logic [4:0] dec_gpr_rp2(input logic [6:4] opcode);
+    case(opcode)
+        3'b000:  dec_gpr_rp2 = GPRBUS_SP_w;
+        3'b001:  dec_gpr_rp2 = GPRBUS_BC_w;
+        3'b010:  dec_gpr_rp2 = GPRBUS_DE_w;
+        3'b011:  dec_gpr_rp2 = GPRBUS_HL_w;
+        3'b100:  dec_gpr_rp2 = GPRBUS_EA_w;
+        default: dec_gpr_rp2 = GPRBUS_EA_w; //not specified
+    endcase
+endfunction
+
+//Type rp1 decoder
+function automatic logic [4:0] dec_gpr_rp1(input logic [2:0] opcode);
+    case(opcode)
+        3'b000:  dec_gpr_rp1 = GPRBUS_VA_w;
+        3'b001:  dec_gpr_rp1 = GPRBUS_BC_w;
+        3'b010:  dec_gpr_rp1 = GPRBUS_DE_w;
+        3'b011:  dec_gpr_rp1 = GPRBUS_HL_w;
+        3'b100:  dec_gpr_rp1 = GPRBUS_EA_w;
+        default: dec_gpr_rp1 = GPRBUS_EA_w; //not specified
+    endcase
+endfunction
+
+//Type rp decoder
+function automatic logic [4:0] dec_gpr_rp(input logic [1:0] opcode);
+    case(opcode)
+        2'b00: dec_gpr_rp = GPRBUS_SP_w;
+        2'b01: dec_gpr_rp = GPRBUS_BC_w;
+        2'b10: dec_gpr_rp = GPRBUS_DE_w;
+        2'b11: dec_gpr_rp = GPRBUS_HL_w;
+    endcase
+endfunction
+
+//Type rpa decoder
+function automatic logic [4:0] dec_gpr_rpa(input logic [2:0] opcode);
+    case(opcode)
+        3'b000:  dec_gpr_rp1 = GPRBUS_VA_w; //not specified
+        3'b001:  dec_gpr_rpa = GPRBUS_BC_w;
+        3'b010:  dec_gpr_rpa = GPRBUS_DE_w;
+        3'b011:  dec_gpr_rpa = GPRBUS_HL_w;
+        3'b100:  dec_gpr_rpa = GPRBUS_DE_w;
+        3'b101:  dec_gpr_rpa = GPRBUS_HL_w;
+        3'b110:  dec_gpr_rpa = GPRBUS_DE_w;
+        3'b111:  dec_gpr_rpa = GPRBUS_HL_w;
+    endcase
+endfunction
+
+//Type rpa2 decoder
+function automatic logic [4:0] dec_gpr_rpa2(input logic [2:0] opcode);
+    case(opcode)
+        3'b011:  dec_gpr_rpa2 = GPRBUS_DE_w;
+        3'b100:  dec_gpr_rpa2 = GPRBUS_HL_w;
+        3'b101:  dec_gpr_rpa2 = GPRBUS_HL_w;
+        3'b110:  dec_gpr_rpa2 = GPRBUS_HL_w;
+        3'b111:  dec_gpr_rpa2 = GPRBUS_HL_w;
+        default: dec_gpr_rpa2 = GPRBUS_DE_w; //not specified
+    endcase
+endfunction
+
+//Type rpa2 offset decoder
+function automatic logic [4:0] dec_gpr_rpa2_offset(input logic [2:0] opcode);
+    case(opcode)
+        3'b100:  dec_gpr_rpa_offset = GPRBUS_xA_b;
+        3'b101:  dec_gpr_rpa_offset = GPRBUS_xB_b;
+        3'b110:  dec_gpr_rpa_offset = GPRBUS_EA_w;
+        default: dec_gpr_rpa_offset = GPRBUS_EA_w; //not specified
+    endcase
+endfunction
+
+//GPR rw address
+logic   [4:0]   gpr_rw_addr;
+always_comb begin
+    gpr_rw_addr = 5'h1F; //SP word
+
     if(mc_type == MCTYPE0) begin
-             if(mc_sa_dst < 5'd8 && mc_sb >= 5'd8) gpr_acc_mode = 3'd0; //source A uses regfile
-        else if(mc_sa_dst >= 5'd8 && mc_sb < 5'd8) gpr_acc_mode = 3'd1; //source B uses regfile
+        //GPR output can be routed to only one ALU port
+        //To avoid hardware interlocks, uCode guarantees there are no collisions
+        //Direct DST/SRC assignments to A and EA use separate A/EA read buses
+        unique if(mc_t0_dst == T0_DST_R || mc_t0_src == T0_SRC_R)
+            gpr_rw_addr = dec_gpr_r(reg_OPCODE[2:0]);
+        else if(mc_t0_dst == T0_DST_R2 || mc_t0_src == T0_SRC_R2)
+            gpr_rw_addr = dec_gpr_r2(reg_OPCODE[1:0]);
+        else if(mc_t0_dst == T0_DST_R1 || mc_t0_src == T0_SRC_R1)
+            gpr_rw_addr = dec_gpr_r1(reg_OPCODE[2:0]);
+        else if(mc_t0_dst == T0_DST_RP2 || mc_t0_src == T0_SRC_RP2)
+            gpr_rw_addr = dec_gpr_rp2(reg_OPCODE[6:4]);
+        else if(mc_t0_dst == T0_DST_RP || mc_t0_src == T0_SRC_RP)
+            gpr_rw_addr = dec_gpr_rp(reg_OPCODE[1:0]);
+        else if(mc_t0_dst == T0_DST_RP1 || mc_t0_src == T0_SRC_RP1)
+            gpr_rw_addr = dec_gpr_rp1(reg_OPCODE[2:0]);
+        else if(mc_t0_dst == T0_DST_C)
+            gpr_rw_addr = GPRBUS_xC_b;
+        else if(mc_t0_dst == T0_DST_BC)
+            gpr_rw_addr = GPRBUS_BC_w;
     end
     else if(mc_type == MCTYPE1) begin
-             if(mc_sc_dst < 4'd8 && mc_sd >= 4'd8) gpr_acc_mode = 3'd2; //source C uses regfile
-        else if(mc_sc_dst >= 4'd8 && mc_sd < 4'd8) gpr_acc_mode = 3'd3; //source D uses regfile
+        unique if(mc_t1_src == T1_SRC_RPA_OFFSET)
+            gpr_rw_addr = dec_gpr_rpa2_offset(reg_OPCODE[2:0]);
+        else if(mc_t1_dst == T1_DST_RPA || mc_t1_src == T1_SRC_RPA)
+            gpr_rw_addr = dec_gpr_rpa(reg_OPCODE[2:0]);
+        else if(mc_t1_src == T1_SRC_RPA2)
+            gpr_rw_addr = dec_gpr_rpa2(reg_OPCODE[2:0]);
+        else if(mc_t1_src == T1_SRC_BC)
+            gpr_rw_addr = GPRBUS_BC_w;
+        else if(mc_t1_src == T1_SRC_DE)
+            gpr_rw_addr = GPRBUS_DE_w;
+        else if(mc_t1_src == T1_SRC_HL)
+            gpr_rw_addr = GPRBUS_HL_w;
+        else if(mc_t1_src == T1_SRC_SP)
+            gpr_rw_addr = GPRBUS_SP_w;
     end
 end
-
-//register file address: which register we should read?
-reg     [4:0]   gpr_addr;
-always @(*) begin
-    gpr_addr = 5'h10; //ZERO
-
-    if(gpr_acc_mode[2] != 1'b1) begin
-        if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R) || 
-            (gpr_acc_mode == 3'd1 && mc_sb == SB_R)           ) begin //R type decoder
-            case(reg_OPCODE[2:0])
-                3'b000: gpr_addr = 5'h0;
-                3'b001: gpr_addr = 5'h1;
-                3'b010: gpr_addr = 5'h4;
-                3'b011: gpr_addr = 5'h5;
-                3'b100: gpr_addr = 5'h6;
-                3'b101: gpr_addr = 5'h7;
-                3'b110: gpr_addr = 5'h8;
-                3'b111: gpr_addr = 5'h9;
-            endcase
-        end
-        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R1) || 
-                (gpr_acc_mode == 3'd1 && mc_sb == SB_R1)           ) begin //R1 type decoder
-            case(reg_OPCODE[2:0])
-                3'b000: gpr_addr = 5'h2;
-                3'b001: gpr_addr = 5'h3;
-                3'b010: gpr_addr = 5'h4;
-                3'b011: gpr_addr = 5'h5;
-                3'b100: gpr_addr = 5'h6;
-                3'b101: gpr_addr = 5'h7;
-                3'b110: gpr_addr = 5'h8;
-                3'b111: gpr_addr = 5'h9;
-            endcase
-        end
-        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_R2) || 
-                (gpr_acc_mode == 3'd1 && mc_sb == SB_R2)         ||
-                (gpr_acc_mode == 3'd2 && mc_sc_dst == SC_DST_R2) ||
-                (gpr_acc_mode == 3'd3 && mc_sd == SD_R2)           ) begin //R2 type decoder
-            case(reg_OPCODE[1:0])
-                2'b00: gpr_addr = 5'h0;
-                2'b01: gpr_addr = 5'h1;
-                2'b10: gpr_addr = 5'h4;
-                2'b11: gpr_addr = 5'h5;
-            endcase
-        end
-        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP2) || 
-                (gpr_acc_mode == 3'd1 && mc_sb == SB_RP2)           ) begin //RP2 type decoder
-            case(reg_OPCODE[6:4])
-                3'b000: gpr_addr = 5'hA;
-                3'b001: gpr_addr = 5'hC;
-                3'b010: gpr_addr = 5'hD;
-                3'b011: gpr_addr = 5'hE;
-                3'b100: gpr_addr = 5'hF;
-                default: gpr_addr = 5'h10;
-            endcase
-        end
-        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP1) || 
-                (gpr_acc_mode == 3'd1 && mc_sb == SB_RP1)           ) begin //RP1 type decoder
-            case(reg_OPCODE[2:0])
-                3'b000: gpr_addr = 5'hB;
-                3'b001: gpr_addr = 5'hC;
-                3'b010: gpr_addr = 5'hD;
-                3'b011: gpr_addr = 5'hE;
-                3'b100: gpr_addr = 5'hF;
-                default: gpr_addr = 5'h10;
-            endcase
-        end
-        else if((gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_RP) || 
-                (gpr_acc_mode == 3'd1 && mc_sb == SB_RP)           ) begin //RP type decoder
-            case(reg_OPCODE[1:0])
-                2'b00: gpr_addr = 5'hA;
-                2'b01: gpr_addr = 5'hC;
-                2'b10: gpr_addr = 5'hD;
-                2'b11: gpr_addr = 5'hE;
-            endcase
-        end
-        else if((gpr_acc_mode == 3'd1 && mc_sb == SB_RPA) ||
-                (gpr_acc_mode == 3'd3 && mc_sd == SD_RPA)   ) begin //RPA type decoder
-            case(reg_OPCODE[2:0])
-                3'b001: gpr_addr = 5'hC;
-                3'b010: gpr_addr = 5'hD;
-                3'b011: gpr_addr = 5'hE;
-                3'b100: gpr_addr = 5'hD; //A+, use alu type 1 for auto inc/dec
-                3'b101: gpr_addr = 5'hE; //A+, use alu type 1 for auto inc/dec
-                3'b110: gpr_addr = 5'hD; //-A, use alu type 1 for auto inc/dec
-                3'b111: gpr_addr = 5'hE; //-A, use alu type 1 for auto inc/dec
-                default: gpr_addr = 5'h10;
-            endcase
-        end
-        else if(gpr_acc_mode == 3'd1 && mc_sb == SB_RPA2) begin //RPA2 type decoder
-            case(reg_OPCODE[2:0])
-                3'b011: gpr_addr = 5'hD;
-                3'b100: gpr_addr = 5'hE;
-                3'b101: gpr_addr = 5'hE;
-                3'b110: gpr_addr = 5'hE;
-                3'b111: gpr_addr = 5'hE;
-                default: gpr_addr = 5'h10;
-            endcase
-        end
-        else if(gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_C) 
-            gpr_addr = 5'h5;
-        else if(gpr_acc_mode == 3'd0 && mc_sa_dst == SA_DST_SP) 
-            gpr_addr = 5'hA;
-        else if((gpr_acc_mode == 3'd2 && mc_sc_dst == SC_DST_BC) || 
-                (gpr_acc_mode == 3'd3 && mc_sd == SD_BC)) 
-            gpr_addr = 5'hC;
-        else if(gpr_acc_mode == 3'd3 && mc_sd == SD_DE) 
-            gpr_addr = 5'hD;
-        else if(gpr_acc_mode == 3'd3 && mc_sd == SD_HL) 
-            gpr_addr = 5'hE;
-        else if(gpr_acc_mode == 3'd3 && mc_sd == SD_SP) 
-            gpr_addr = 5'hA;
-        else if(gpr_acc_mode == 3'd4) begin
-            case(reg_OPCODE[1:0])
-                2'b00: gpr_addr = 5'h0;
-                2'b01: gpr_addr = 5'h1;
-                2'b10: gpr_addr = 5'h4;
-                2'b11: gpr_addr = 5'h5;
-            endcase
-        end
-    end
-end
-
-//GPR write
-reg             gpr_wr;
-always @(*) begin
-    gpr_wr = 1'b0;
-    
-    if(gpr_acc_mode[2] == 1'b0) begin
-        if(gpr_acc_mode[0] == 1'b0) gpr_wr = 1'b1;
-        else begin
-            if(mc_type == MCTYPE1 && mc_t1_alusel > 4'h7) gpr_wr = 1'b1;
-        end
-    end
-end 
-
-wire            reg_EAL_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA) ||                      //direct designation
-                             (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA) ||                      //direct designation
-                             (gpr_wr && (gpr_addr == 4'h3 || gpr_addr == 4'hF)) ||
-                             alu_muldiv_reg_EA_wr;
-wire            reg_EAH_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA) ||                      //direct designation
-                             (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_EA) ||                      //direct designation
-                             (gpr_wr && (gpr_addr == 4'h2 || gpr_addr == 4'hF)) ||
-                             alu_muldiv_reg_EA_wr;
-                             
-wire            reg_V_wr  = (gpr_wr && (gpr_addr == 4'h0 || gpr_addr == 4'hB));
-wire            reg_A_wr  = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_A) ||                       //direct designation
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_A) ||                       //direct designation
-                            (gpr_wr && (gpr_addr == 4'h1 || gpr_addr == 4'hB));
-
-wire            reg_B_wr  = (gpr_wr && (gpr_addr == 4'h4 || gpr_addr == 4'hC));
-wire            reg_C_wr  = (gpr_wr && (gpr_addr == 4'h5 || gpr_addr == 4'hC));
-
-wire            reg_D_wr  = (gpr_wr && (gpr_addr == 4'h6 || gpr_addr == 4'hD));
-wire            reg_E_wr  = (gpr_wr && (gpr_addr == 4'h7 || gpr_addr == 4'hD));
-
-wire            reg_H_wr  = (gpr_wr && (gpr_addr == 4'h8 || gpr_addr == 4'hE));
-wire            reg_L_wr  = (gpr_wr && (gpr_addr == 4'h9 || gpr_addr == 4'hE));
-
-wire            data_w_nb = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_EA ) || //direct designation
-                            (gpr_wr && (gpr_addr > 4'hA)) ||
-                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1000) || //addr dec
-                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1001) || //addr inc(BLOCK)
-                            (mc_type == MCTYPE1 && mc_t1_alusel == 4'b1010) || //rpa auto inc/dec
-                            alu_muldiv_reg_EA_wr;
-
-//PC/SP
-wire            reg_PC_wr = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_PC) ||
-                            (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_PC) ||
-                            (mc_type == MCTYPE3 && mc_s_cond_pc_dec);
-
-wire            reg_SP_wr = (gpr_wr && (gpr_addr == 4'hA));
-
-//Memory IO related registers, MA=Memory Address, MD=Memory Data
-wire            reg_MA_dec_mode = mc_type == MCTYPE1 && mc_t1_alusel == 4'h8;
-wire            reg_MA_wr     = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MA) ||
-                                (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA);
-
-wire            reg_MDL_wr_A  = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd0) || //STAX
-                                (mc_type == MCTYPE1 && mc_sd == SD_RPA  && mc_sc_dst == SC_DST_MA && opcode_page == 3'd0);   //STAX
-wire            reg_MD_wr_EA  = (mc_type == MCTYPE0 && mc_sb == SB_RPA2 && mc_sa_dst == SA_DST_MA && opcode_page == 3'd1) || //STEAX
-                                (mc_type == MCTYPE1 && mc_sd == SD_RPA  && mc_sc_dst == SC_DST_MA && opcode_page == 3'd1);   //STEAX
-wire            reg_MD_wr_PC  = (mc_type == MCTYPE1 && mc_sd == SD_SP && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000); 
-wire            reg_MDL_wr    = (mc_type == MCTYPE0 && (mc_sa_dst == SA_DST_MDL || mc_sa_dst == SA_DST_MD)) || 
-                                (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDL || mc_sc_dst == SC_DST_MD));
-wire            reg_MDH_wr    = (mc_type == MCTYPE0 && mc_sa_dst == SA_DST_MD) || 
-                                (mc_type == MCTYPE1 && (mc_sc_dst == SC_DST_MDH || mc_sc_dst == SC_DST_MD));
-
-//swaps MD output order, push to stack or V_wa addressing
-wire            reg_MD_output_h2l = (mc_type == MCTYPE3 && mc_s_swap_md_out) || 
-                                    (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_MA && mc_t1_alusel == 4'b1000); 
-wire            reg_MD_output_l2h = (mc_type == MCTYPE1 && mc_sd == SD_PSW);
-wire            reg_MD_input_h2l  = mc_type == MCTYPE3 && mc_s_cond_read && mc_next_bus_acc == RD3;
-
-//status register(flag restoration)
-wire            reg_PSW_wr    = (mc_type == MCTYPE1 && mc_sc_dst == SC_DST_PSW);
-
-//ALU control
-wire            alu_mul_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0100;
-wire            alu_div_start = mc_type == MCTYPE1 && mc_t1_alusel == 4'b0101;
 
 
 
 ///////////////////////////////////////////////////////////
-//////  REGISTER FILE
+//////  REGISTER WRITE ENABLES
 ////
 
-//
-//  General purpose registers
-//
+//GPR write: write enables
+logic           is_dst_gpr;  //when one of the GPR is selected as a destination...
+logic           is_push_pop; //when AEU is running push/pop operation...
+always_comb begin
+    is_dst_gpr = 1'b0;
+    if(mc_type == MCTYPE0) begin
+        if(mc_t0_dst == T0_DST_R   || mc_t0_dst == T0_DST_R2 || mc_t0_dst == T0_DST_R1  ||
+           mc_t0_dst == T0_DST_RP2 || mc_t0_dst == T0_DST_RP || mc_t0_dst == T0_DST_RP1 ||
+           mc_t0_dst == T0_DST_C   || mc_t0_dst == T0_DST_BC)
+            is_dst_gpr = 1'b1;
+    end
+    else if(mc_type == MCTYPE1) begin
+        if(mc_t1_dst == T1_DST_RPA)
+            is_dst_gpr = 1'b1;
+    end
+
+    is_push_pop = mc_type == MCTYPE1 && (mc_t1_aeusel == T1_AEU_PUSH || mc_t1_aeusel == T1_AEU_POP);
+end
+
+//general purpose registers
+wire            reg_V_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_VA_w || gpr_rw_addr == GPRBUS_xV_b));
+
+wire            reg_B_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_BC_w || gpr_rw_addr == GPRBUS_xB_b)) ||
+                              (is_push_pop &&  gpr_rw_addr == GPRBUS_BC_w);
+wire            reg_C_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_BC_w || gpr_rw_addr == GPRBUS_xC_b)) ||
+                              (is_push_pop &&  gpr_rw_addr == GPRBUS_BC_w);
+wire            reg_D_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_DE_w || gpr_rw_addr == GPRBUS_xD_b)) ||
+                              (is_push_pop &&  gpr_rw_addr == GPRBUS_DE_w);
+wire            reg_E_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_DE_w || gpr_rw_addr == GPRBUS_xE_b)) ||
+                              (is_push_pop &&  gpr_rw_addr == GPRBUS_DE_w);
+wire            reg_H_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_HL_w || gpr_rw_addr == GPRBUS_xH_b)) ||
+                              (is_push_pop &&  gpr_rw_addr == GPRBUS_HL_w);
+wire            reg_L_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_HL_w || gpr_rw_addr == GPRBUS_xL_b)) ||
+                              (is_push_pop &&  gpr_rw_addr == GPRBUS_HL_w);
+
+//special cases(including accumulators)
+wire            reg_A_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_VA_w || gpr_rw_addr == GPRBUS_xA_b)) ||
+                              (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_A);
+wire            reg_EAL_wr  = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_EA_w || gpr_rw_addr == GPRBUS_EL_b)) ||
+                              (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_EA) ||
+                               deu_muldiv_ea_wr;
+wire            reg_EAH_wr  = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_EA_w || gpr_rw_addr == GPRBUS_EH_b)) ||
+                              (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_EA) ||
+                               deu_muldiv_ea_wr;
+wire            reg_SP_wr   = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_SP_w)) ||
+                              (is_push_pop &&  gpr_rw_addr == GPRBUS_SP_w);
+
+//PC write
+wire            reg_PC_wr   = (mc_type == MCTYPE1 && mc_t1_dst == T1_DST_PC) ||
+                              (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_PSW) ||
+                              (mc_type == MCTYPE3 && mc_t3_cond_pc_dec);
+
+//special register write
+wire            reg_SR_wr   = (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_SR);
+
+//status register(flag restoration)
+wire            reg_PSW_wr  = (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_PSW);
+
+//Bus related registers, MA=Memory Address, MD=Memory Data
+wire            reg_MA_wr   = (mc_type == MCTYPE1 && mc_t1_dst == T1_DST_MA);
+wire            reg_MD0_wr  = (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_MD ||
+                               mc_type == MCTYPE0 && mc_t0_dst == T0_DST_MD0 ||
+                               mc_type == MCTYPE1 && mc_t1_dst == T1_DST_MD);
+wire            reg_MD1_wr  = (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_MD ||
+                               mc_type == MCTYPE0 && mc_t0_dst == T0_DST_MD1 ||
+                               mc_type == MCTYPE1 && mc_t1_dst == T1_DST_MD);
+wire            reg_MD2_wr  = (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_MD && mc_t0_src == T0_SRC_PSW);
+
+
+
+///////////////////////////////////////////////////////////
+//////  DEU/AEU CONTROL/OUTPUT
+////
+
+//Data Execution Unit data size flag
+wire            deu_dsize  = (is_dst_gpr && (gpr_rw_addr[1])) ||
+                             (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_EA)  ||
+                             (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_MD)  ||
+                             (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_PSW) ||
+                             deu_muldiv_ea_wr; //word/byte select
+
+//DEU output
+reg     [15:0]  deu_output; //ALU output
+reg     [15:0]  deu_aux_output; //ALU temp register
+reg             deu_muldiv_aux_wr, alu_digrot_aux_wr, deu_muldiv_ea_wr;
+wire            reg_AUX_wr = deu_muldiv_aux_wr | alu_digrot_aux_wr;
+
+//DEU control
+wire            deu_mul_start = mc_type == MCTYPE0 && mc_t0_deusel == T0_DEU_MUL;
+wire            deu_div_start = mc_type == MCTYPE0 && mc_t0_deusel == T0_DEU_DIV;
+
+//AEU output
+reg     [15:0]  aeu_output, aeu_ma_output;
+
+
+
+
+///////////////////////////////////////////////////////////
+//////  GENERAL PURPOSE REGISTERS
+////
+
+reg     [15:0]  gpr_RDBUS;
+reg     [15:0]  gpr_WRBUS;
 
 //register pair select switch
 reg             flag_EXX, flag_EXA, flag_EXH;
@@ -1112,18 +1102,15 @@ always @(posedge emuclk) begin
         flag_EXA <= 1'b0;
         flag_EXH <= 1'b0;
     end
-    else begin
-        if(cycle_tick) begin
-            if(mc_type == MCTYPE2) begin
-                case(mc_bk_reg_exchg)
-                    2'b00: ;
-                    2'b01: flag_EXX <= ~flag_EXX;
-                    2'b10: flag_EXA <= ~flag_EXA;
-                    2'b11: flag_EXH <= ~flag_EXH;
-                endcase
-            end
-        end
-    end
+    else begin if(cycle_tick) begin
+        if(mc_type == MCTYPE2)
+            case(mc_t2_reg_exchg)
+                2'b00: ;
+                2'b01: flag_EXX <= ~flag_EXX;
+                2'b10: flag_EXA <= ~flag_EXA;
+                2'b11: flag_EXH <= ~flag_EXH;
+            endcase
+    end end
 end
 
 //register pairs and write control
@@ -1146,20 +1133,18 @@ always @(posedge emuclk) begin
         regpair_H[0] <= 8'h00; regpair_H[1] <= 8'h00;
         regpair_L[0] <= 8'h00; regpair_L[1] <= 8'h00;
     end
-    else begin
-        if(cycle_tick) begin
-            if(reg_EAH_wr) regpair_EAH[sel_VAEA] <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
-            if(reg_EAL_wr) regpair_EAL[sel_VAEA] <= alu_output[7:0];
-            if(reg_V_wr)   regpair_V[sel_VAEA]   <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
-            if(reg_A_wr)   regpair_A[sel_VAEA]   <= alu_output[7:0];
-            if(reg_B_wr)   regpair_B[sel_BCDE]   <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
-            if(reg_C_wr)   regpair_C[sel_BCDE]   <= alu_output[7:0];
-            if(reg_D_wr)   regpair_D[sel_BCDE]   <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
-            if(reg_E_wr)   regpair_E[sel_BCDE]   <= alu_output[7:0];
-            if(reg_H_wr)   regpair_H[sel_HL]     <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
-            if(reg_L_wr)   regpair_L[sel_HL]     <= alu_output[7:0];
-        end
-    end
+    else begin if(cycle_tick) begin
+        if(reg_EAH_wr) regpair_EAH[sel_VAEA] <= gpr_WRBUS;
+        if(reg_EAL_wr) regpair_EAL[sel_VAEA] <= gpr_WRBUS;
+        if(reg_V_wr)   regpair_V[sel_VAEA]   <= gpr_WRBUS;
+        if(reg_A_wr)   regpair_A[sel_VAEA]   <= gpr_WRBUS;
+        if(reg_B_wr)   regpair_B[sel_BCDE]   <= gpr_WRBUS;
+        if(reg_C_wr)   regpair_C[sel_BCDE]   <= gpr_WRBUS;
+        if(reg_D_wr)   regpair_D[sel_BCDE]   <= gpr_WRBUS;
+        if(reg_E_wr)   regpair_E[sel_BCDE]   <= gpr_WRBUS;
+        if(reg_H_wr)   regpair_H[sel_HL]     <= gpr_WRBUS;
+        if(reg_L_wr)   regpair_L[sel_HL]     <= gpr_WRBUS;
+    end end
 end
 
 //register pair output selectors
@@ -1174,28 +1159,45 @@ wire    [7:0]   reg_E = regpair_E[sel_BCDE];
 wire    [7:0]   reg_H = regpair_H[sel_HL]; 
 wire    [7:0]   reg_L = regpair_L[sel_HL];
 
+//read bus
+always @(*) begin
+    casez(gpr_rw_addr)
+        5'h000_0_0: gpr_RDBUS = {8'h00, reg_V};
+        5'h000_0_1: gpr_RDBUS = {8'h00, reg_A};
+        5'h000_1_?: gpr_RDBUS = {reg_V, reg_A};
+        5'h001_0_0: gpr_RDBUS = {8'h00, reg_B};
+        5'h001_0_1: gpr_RDBUS = {8'h00, reg_C};
+        5'h001_1_?: gpr_RDBUS = {reg_B, reg_C};
+        5'h010_0_0: gpr_RDBUS = {8'h00, reg_V};
+        5'h010_0_1: gpr_RDBUS = {8'h00, reg_E};
+        5'h010_1_?: gpr_RDBUS = {reg_D, reg_E};
+        5'h011_0_0: gpr_RDBUS = {8'h00, reg_H};
+        5'h011_0_1: gpr_RDBUS = {8'h00, reg_L};
+        5'h011_1_?: gpr_RDBUS = {reg_H, reg_L};
+        5'h10?_0_0: gpr_RDBUS = {8'h00, reg_EAH};
+        5'h10?_0_1: gpr_RDBUS = {8'h00, reg_EAL};
+        5'h10?_1_?: gpr_RDBUS = {reg_EAH, reg_EAL};
+        5'h11?_0_0: gpr_RDBUS = {8'h00, reg_SP[15:8]};
+        5'h11?_0_1: gpr_RDBUS = {reg_SP};
+        5'h11?_1_?: gpr_RDBUS = {reg_SP};  
+        default:    gpr_RDBUS = 16'hZZZZ;  
+    endcase
+end
 
-//
-//  Arbitrarily made registers: unsure the original chip has them
-//
-
-reg     [15:0]  reg_MDI; //Memory Data input spare
-reg     [7:0]   reg_MDH, reg_MDL; //byte [15:8], word[15:0]
-reg     [15:0]  reg_TEMP;
-
-
-//
-//  Flags
-//
-
-reg             flag_Z, flag_SK, flag_C, flag_HC, flag_L1, flag_L0;
-wire    [7:0]   reg_PSW = {1'b0, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b0, flag_C};
+//write bus
+always @(*) begin
+    unique if(mc_type == MCTYPE0) gpr_WRBUS = deu_dsize ? deu_output : {2{deu_output[7:0]}};
+    else if(mc_type == MCTYPE1) gpr_WRBUS = aeu_output;
+    else gpr_WRBUS = 16'h0000;
+end
 
 
-//
-//  PC, SP, MA registers with auto increment/decrement feature
-//
 
+///////////////////////////////////////////////////////////
+//////  PC/SP/MA
+////
+
+//PC, SP, MA registers with auto increment/decrement feature
 reg     [15:0]  reg_PC, reg_SP, reg_MA;
 reg     [15:0]  next_pc;
 assign  spurious_irq_addr = reg_PC;
@@ -1213,26 +1215,19 @@ always @(posedge emuclk) begin
     if(!mrst_n) begin
         address_source_sel <= PC;
         reg_PC_inc_stop <= 1'b0;
-
-        reg_MA_inc_ndec <= 1'b1;
     end
-    else begin
-        if(cycle_tick) begin
-            if(mc_end_of_instruction) begin
-                address_source_sel <= PC;
-                reg_PC_inc_stop <= 1'b0;
-
-                reg_MA_inc_ndec <= 1'b1;
-            end
-            else begin
-                if(reg_MA_wr) begin
-                    address_source_sel <= MA; //select MA
-                    reg_PC_inc_stop <= 1'b1;
-                end
-
-                if(reg_MA_dec_mode) reg_MA_inc_ndec <= 1'b0;
-            end
+    else begin if(cycle_tick) begin
+        if(mc_end_of_instruction) begin
+            address_source_sel <= PC;
+            reg_PC_inc_stop <= 1'b0;
         end
+        else begin
+            if(reg_MA_wr) begin
+                address_source_sel <= MA; //select MA
+                reg_PC_inc_stop <= 1'b1;
+            end
+            else if(mc_next_bus_acc == IDLE) reg_PC_inc_stop <= 1'b1;
+        end end
     end
 
     //REGISTERS
@@ -1240,31 +1235,27 @@ always @(posedge emuclk) begin
         reg_PC <= 16'hFFFF;
         reg_SP <= 16'h0000; //undefined after reset
         reg_MA <= 16'h0000;
-        reg_TEMP <= 16'h0000;
     end
     else begin
         if(cycle_tick) begin
             //Program Counter load/auto increment conditions
-            if(reg_PC_wr) reg_PC <= alu_output;
+            if(reg_PC_wr) reg_PC <= aeu_output;
             else reg_PC <= next_pc;
 
             //Stack Pointer load condition
-            if(reg_SP_wr) reg_SP <= alu_output;
+            if(reg_SP_wr) reg_SP <= aeu_output;
 
             //Memory Address load/auto inc conditions
-            if(reg_MA_wr) reg_MA <= alu_ma_output;
+            if(reg_MA_wr) reg_MA <= aeu_ma_output;
             else begin
                 if(current_bus_acc == RD3 || current_bus_acc == WR3) begin //if there was a 3cyc read/write access,
                     if(address_source_sel == MA) begin
                         if(reg_MA_inc_ndec) reg_MA <= reg_MA == 16'hFFFF ? 16'h0000 : reg_MA + 16'h0001;
-                        else reg_MA <= reg_MA == 16'h0000 ? 16'hFFFF : reg_MA - 16'h0001;
                     end
                     else reg_MA <= reg_MA;
                 end
                 else reg_MA <= reg_MA;
             end
-
-            if(reg_TEMP_wr) reg_TEMP <= alu_temp_output;
         end
         else if(opcode_inlatch_tick) begin
             reg_MA <= reg_PC;
@@ -1287,6 +1278,19 @@ always @(*) begin
         MA: memory_access_address = reg_MA;
     endcase
 end
+
+//Arbitrarily made registers: unsure the original chip has them
+reg     [7:0]   reg_MD[0:3]; //memory data
+always @(*) reg_MD[3] = 8'h00; //unused address
+
+reg     [15:0]  reg_AUX;     //DEU DIV aux
+reg     [15:0]  reg_ADDR_IM; //immediate address from the bus
+reg     [7:0]   reg_ADDR_WA; //WA from the bus
+
+
+//Processor Status Word flags
+reg             flag_Z, flag_SK, flag_C, flag_HC, flag_L1, flag_L0;
+wire    [7:0]   reg_PSW = {1'b0, flag_Z, flag_SK, flag_HC, flag_L1, flag_L0, 1'b0, flag_C};
 
 
 
@@ -1334,18 +1338,7 @@ end
 */
 
 //special register address
-reg     [5:0]   sr_wr_addr, sr_rd_addr;
-always @(*) begin
-         if(mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SR_SR1) sr_wr_addr = reg_MDI[5:0];
-    else if(mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SR2)    sr_wr_addr = {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
-    else if(mc_type == MCTYPE0 && mc_sa_dst == SA_DST_SR3)    sr_wr_addr = {5'b11000, reg_OPCODE[0]};
-    else   sr_wr_addr = 6'h3F;
-
-         if(mc_type == MCTYPE0 && mc_sb == SB_SR_SR1)         sr_rd_addr = reg_MDI[5:0];
-    else if(mc_type == MCTYPE0 && mc_sb == SB_SR2)            sr_rd_addr = {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
-    else if(mc_type == MCTYPE0 && mc_sb == SB_SR4)            sr_rd_addr = {5'b11001, reg_OPCODE[0]};
-    else   sr_rd_addr = 6'h3F;
-end
+reg     [5:0]   reg_ADDR_SR; //special register address
 
 //port related register
 reg     [7:0]   spr_PAO, spr_PBO, spr_PCO, spr_PDO, spr_PFO; //undefined after reset, see page 180
@@ -1392,31 +1385,31 @@ always @(posedge emuclk) begin
     else begin 
         if(cycle_tick) begin
             case(sr_wr_addr) 
-                6'h00: spr_PAO <= alu_output[7:0];
-                6'h01: spr_PBO <= alu_output[7:0];
-                6'h02: spr_PCO <= alu_output[7:0];
-                6'h03: spr_PDO <= alu_output[7:0];
-                6'h05: spr_PFO <= alu_output[7:0];
-                6'h06: spr_MKH <= alu_output[2:0];
-                6'h07: spr_MKL <= alu_output[7:1];
-                6'h08: spr_ANM <= alu_output[4:0];
-                //6'h09: spr_SMH <= alu_output[7:0];
-                //6'h0A: spr_SML <= alu_output[7:0];
-                6'h0B: spr_EOM <= alu_output[7:0];
-                6'h0C: spr_ETMM <= alu_output[7:0];
-                6'h0D: spr_TMM <= alu_output[7:0];
-                6'h10: spr_MM <= alu_output[7:0];
-                6'h11: spr_MCC <= alu_output[7:0];
-                6'h12: spr_MA <= alu_output[7:0];
-                6'h13: spr_MB <= alu_output[7:0];
-                6'h14: spr_MC <= alu_output[7:0];
-                6'h17: spr_MF <= alu_output[7:0];
+                6'h00: spr_PAO <= deu_output[7:0];
+                6'h01: spr_PBO <= deu_output[7:0];
+                6'h02: spr_PCO <= deu_output[7:0];
+                6'h03: spr_PDO <= deu_output[7:0];
+                6'h05: spr_PFO <= deu_output[7:0];
+                6'h06: spr_MKH <= deu_output[2:0];
+                6'h07: spr_MKL <= deu_output[7:1];
+                6'h08: spr_ANM <= deu_output[4:0];
+                //6'h09: spr_SMH <= deu_output[7:0];
+                //6'h0A: spr_SML <= deu_output[7:0];
+                6'h0B: spr_EOM <= deu_output[7:0];
+                6'h0C: spr_ETMM <= deu_output[7:0];
+                6'h0D: spr_TMM <= deu_output[7:0];
+                6'h10: spr_MM <= deu_output[7:0];
+                6'h11: spr_MCC <= deu_output[7:0];
+                6'h12: spr_MA <= deu_output[7:0];
+                6'h13: spr_MB <= deu_output[7:0];
+                6'h14: spr_MC <= deu_output[7:0];
+                6'h17: spr_MF <= deu_output[7:0];
                 //6'h18: ; //TxB, not implemented
-                6'h1A: spr_TM0 <= alu_output[7:0];
-                6'h1B: spr_TM1 <= alu_output[7:0];
-                //6'h28: spr_ZCM <= alu_output[2:1];
-                6'h30: spr_ETM0 <= alu_output[15:0];
-                6'h31: spr_ETM1 <= alu_output[15:0];
+                6'h1A: spr_TM0 <= deu_output[7:0];
+                6'h1B: spr_TM1 <= deu_output[7:0];
+                //6'h28: spr_ZCM <= deu_output[2:1];
+                6'h30: spr_ETM0 <= deu_output[15:0];
+                6'h31: spr_ETM1 <= deu_output[15:0];
                 default: ;
             endcase 
         end 
@@ -1427,7 +1420,7 @@ always @(posedge emuclk) begin
 end
 
 always @(*) begin
-    case(sr_rd_addr) 
+    case(reg_ADDR_SR) 
             6'h00: spr_RDBUS = i_PA_I;
             6'h01: spr_RDBUS = i_PB_I;
             6'h02: spr_RDBUS = i_PC_I;
@@ -1467,126 +1460,126 @@ always @(posedge emuclk) begin
     end
 end
 
+//opcode latch
+always @(posedge emuclk) begin
+    if(!mrst_n) reg_OPCODE <= 8'h00;
+    else begin
+        //Opcode register load
+        if(opcode_inlatch_tick) begin
+                 if(force_exec_hardi) reg_OPCODE <= 8'h73;
+            else if(force_exec_nop)   reg_OPCODE <= 8'h00;
+            else                      reg_OPCODE <= i_DI;
+        end
+    
+        //Full opcode register for the disassembler
+        if(cycle_tick) begin if(mc_end_of_instruction) reg_FULL_OPCODE_cntr <= 2'd0; end
+        else if(full_opcode_inlatch_tick_debug) begin
+            reg_FULL_OPCODE_debug[reg_FULL_OPCODE_cntr] <= force_exec_hardi ? 8'h73 : i_DI;
+            reg_FULL_OPCODE_cntr <= reg_FULL_OPCODE_cntr + 2'd1;
+        end
+    end
+end
 
-//memory data byte hi/lo sel
-reg             md_out_byte_sel, md_in_byte_sel;
+//memory data IO
+/*
+    A write to the MD works like a stack. Any data from DEU/AEU and ext bus
+    will be written on the data that was previusly stored.
+          
+    DOUT  <- MAX TOS
+    MD[2]        ^ write(stack)
+    MD[1]        |
+    MD[0] <- TOS(reset after current instruction is executed)
+*/
+
+reg     [1:0]   md_tos; //top of the stack
+reg     [1:0]   addr_ia_we; //immediate address latching sequence
+reg             addr_wa_we; //WA address wren
+reg     [2:0]   addr_sr_we; //special register address wren
+
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        md_out_byte_sel <= 1'b0;
-        md_in_byte_sel <= 1'b0;
+        md_tos <= 2'd0;
+        addr_ia_we <= 2'b00;
+        addr_wa_we <= 1'b0;
+        addr_sr_we <= 3'b000;
+
+        reg_MD[0] <= 8'h00;
+        reg_MD[1] <= 8'h00;
+        reg_MD[2] <= 8'h00;
+        reg_ADDR_IM <= 16'h0000;
+        reg_ADDR_SR <= 6'h3F;
     end
     else begin
         if(cycle_tick) begin
             if(mc_end_of_instruction) begin
-                md_out_byte_sel <= 1'b0;
-                md_in_byte_sel <= 1'b0;
+                md_tos <= 2'd0;
+                addr_ia_we <= 2'b00;
+                addr_wa_we <= 1'b0;
+                addr_sr_we <= 1'b0;
             end
             else begin
-                //swap output data order(to HI->LO) when the current microcode operation is MD<-PC
-                if(reg_MD_output_h2l) md_out_byte_sel <= 1'b1;
-                else if(reg_MD_output_l2h) md_out_byte_sel <= 1'b0;
-                else begin
-                    if(current_bus_acc == WR3) md_out_byte_sel <= ~md_out_byte_sel;
-                end
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd0) addr_ia_we <= 2'b11;
+                else addr_ia_we <= addr_ia_we >> 1;
 
-                if(reg_MD_input_h2l) md_in_byte_sel <= 1'b1; //for rpa2 DE/HL+byte addressing mode
-                else begin
-                    if(current_bus_acc == RD3) md_in_byte_sel <= ~md_in_byte_sel;
-                end
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd1) addr_wa_we <= 1'b1;
+                else addr_wa_we <= 1'b0;
+
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel > 3'd3) addr_sr_we <= {1'b1, mc_t2_atype_sel[1:0]};
+                else addr_sr_we[2] <= 1'b0;
             end
+        end
+        else if(md_outlatch_tick) begin
+            //all MD registers are working individually
+            if(reg_MD2_wr) reg_MD[2] <= reg_PSW;
+            if(reg_MD1_wr) reg_MD[1] <= deu_dsize ? deu_output[15:8] : deu_output[7:0];
+            if(reg_MD0_wr) reg_MD[0] <= deu_output[7:0];
+
+            //give it a priority
+                 if(reg_MD2_wr) md_tos <= 2'd3;
+            else if(reg_MD1_wr) md_tos <= 2'd2;
+            else if(reg_MD0_wr) md_tos <= 2'd1;
+            else                md_tos <= md_tos - 2'd1;
+        end
+        else if(md_inlatch_tick) begin
+            //latch the bus data only when the current data type is NOT specified
+            if(~|{addr_ia_we, addr_wa_we, addr_sr_we[2]})
+                case(md_tos)
+                    2'd0: begin reg_MD[0] <= i_DI; md_tos <= md_tos + 2'd1; end
+                    2'd1: begin reg_MD[1] <= i_DI; md_tos <= md_tos + 2'd1; end
+                    2'd2: begin reg_MD[2] <= i_DI; md_tos <= md_tos + 2'd1; end
+                    2'd3:                          md_tos <= md_tos;
+                endcase
+
+            //immediate address
+            if(addr_ia_we == 2'b11) reg_ADDR_IM[7:0] <= i_DI;
+            else if(addr_ia_we == 2'b01) reg_ADDR_IM[15:8] <= i_DI;
+
+            //WA address
+            if(addr_wa_we) reg_ADDR_WA <= i_DI;
+
+            //special register address
+            if(addr_sr_we[2])
+                case(addr_sr_we[1:0])
+                    2'd0: reg_ADDR_SR <= reg_MDI[5:0];
+                    2'd1: reg_ADDR_SR <= {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
+                    2'd2: reg_ADDR_SR <= {5'b11000, reg_OPCODE[0]};
+                    2'd3: reg_ADDR_SR <= {5'b11001, reg_OPCODE[0]};
+                endcase
         end
     end
 end
 
 
-//OPCODE/memory data IO
-reg             md_dirty;
-always @(posedge emuclk) begin
-    if(!mrst_n) begin
-        reg_MDI <= 16'h0000;
-        reg_MDL <= 8'h00;
-        reg_MDH <= 8'h00;
-        reg_OPCODE <= 8'h00;
-
-        //when microcode writes data prior to bus data read cycle, dirty bit is set
-        //this bit prevents MD register from being overwritten by bus data
-        //CALL CALF instructions use this feature
-        md_dirty <= 1'b0; 
-    end
-    else begin
-        if(mcuclk_pcen) begin
-            if(cycle_tick) begin
-                if(mc_end_of_instruction) md_dirty <= 1'b0;
-                else begin
-                    if(reg_MDL_wr || reg_MDH_wr) md_dirty <= 1'b1;
-                end
-            end
-            //Memory Data register load
-            if(cycle_tick) begin
-                if(mc_end_of_instruction) begin
-                    reg_MDI <= 16'h0000;
-                    reg_MDH <= 8'h00;
-                    reg_MDL <= 8'h00;
-                end
-                else begin
-                    if(reg_MDL_wr_A) begin //save A to MDL(rpa2, stax)
-                        reg_MDL <= reg_A;
-                    end
-                    else if(reg_MD_wr_EA) begin //save EA to MD(rpa2, steax)
-                        reg_MDH <= reg_EAH;
-                        reg_MDL <= reg_EAL;
-                    end
-                    else if(reg_MD_wr_PC) begin
-                        reg_MDH <= next_pc[15:8];
-                        reg_MDL <= next_pc[7:0];
-                    end
-                    else begin
-                        if(reg_MDH_wr) reg_MDH <= data_w_nb ? alu_output[15:8] : alu_output[7:0];
-                        if(reg_MDL_wr) reg_MDL <= alu_output[7:0];
-                    end
-                end
-            end
-            else if(md_inlatch_tick) begin
-                if(md_dirty) begin
-                    if(md_in_byte_sel) reg_MDI[15:8] <= i_DI;
-                    else reg_MDI[7:0] <= i_DI;
-                end
-                else begin
-                    if(md_in_byte_sel) reg_MDI[15:8] <= i_DI;
-                    else reg_MDI[7:0] <= i_DI;
-
-                    if(md_in_byte_sel) reg_MDH <= i_DI;
-                    else reg_MDL <= i_DI;
-                end
-            end
-
-            //Opcode register load
-            if(opcode_inlatch_tick) begin
-                     if(force_exec_hardi) reg_OPCODE <= 8'h73;
-                else if(force_exec_nop)   reg_OPCODE <= 8'h00;
-                else                      reg_OPCODE <= i_DI;
-            end
-        
-            //Full opcode register for the disassembler
-            if(cycle_tick) begin if(mc_end_of_instruction) reg_FULL_OPCODE_cntr <= 2'd0; end
-            else if(full_opcode_inlatch_tick_debug) begin
-                reg_FULL_OPCODE_debug[reg_FULL_OPCODE_cntr] <= force_exec_hardi ? 8'h73 : i_DI;
-                reg_FULL_OPCODE_cntr <= reg_FULL_OPCODE_cntr + 2'd1;
-            end
-        end
-    end
-end
-
+//full data output
+wire    [7:0]   md_out_byte_data = reg_MD[md_tos - 2'd1];
 
 //address high, multiplexed address low/byte data output
-wire    [7:0]   md_out_byte_data = md_out_byte_sel == 1'b1 ? reg_MDH : reg_MDL;
 //wire    [7:0]   addr_hi_out = memory_access_address[15:8];
 //wire    [7:0]   addr_lo_data_out = addr_data_sel ? md_out_byte_data : memory_access_address[7:0];
 
 //address/data output
 assign  o_A = memory_access_address;
 assign  o_DO = md_out_byte_data;
-
 
 //ALE, /RD, /WR
 reg             ale_out, rd_out, wr_out, pd_do_oe, do_oe, m1, io;
@@ -1619,7 +1612,7 @@ always @(posedge emuclk) begin
     else begin
         if(mcuclk_pcen) begin
             if(cycle_tick) begin
-                if(mc_end_of_instruction && (irq_detected | susp_detected)) begin
+                if(mc_end_of_instruction && (irq_det | susp_det)) begin
                     ale_out <= 1'b0;
                     pd_do_oe <= 1'b0;
                 end
@@ -1646,11 +1639,11 @@ always @(posedge emuclk) begin
 
                     //RD control
                     if(current_bus_acc == RD4) begin
-                        if(timing_sr[2]) rd_out <= 1'b1;
+                        unique if(timing_sr[2]) rd_out <= 1'b1;
                         else if(timing_sr[8]) rd_out <= 1'b0;
                     end
                     else if(current_bus_acc == RD3) begin
-                        if(timing_sr[2]) rd_out <= 1'b1;
+                        unique if(timing_sr[2]) rd_out <= 1'b1;
                         else if(timing_sr[6]) rd_out <= 1'b0;
                     end
                     else rd_out <= 1'b0;
@@ -1662,7 +1655,7 @@ always @(posedge emuclk) begin
 
                 //WR control
                 if(current_bus_acc == WR3) begin
-                    if(timing_sr[2]) begin
+                    unique if(timing_sr[2]) begin
                         wr_out <= 1'b1;
                         do_oe <= 1'b1;
                         io <= 1'b0;
@@ -1679,245 +1672,150 @@ end
 
 
 ///////////////////////////////////////////////////////////
-//////  ALU READ PORT MULTIPLEXERS
+//////  DEU/AEU READ PORT MULTIPLEXERS
 ////
 
-reg     [15:0]  gpr_RDBUS;
+
+//Data execution unit port A and B
+reg     [15:0]  deu_pa, deu_pb; 
 always @(*) begin
-    if(gpr_addr[4]) gpr_RDBUS = 16'h0000;
-    else begin
-        case(gpr_addr[3:0])
-            4'h0: gpr_RDBUS = {8'h00, reg_V};
-            4'h1: gpr_RDBUS = {8'h00, reg_A};
-            4'h2: gpr_RDBUS = {8'h00, reg_EAH};
-            4'h3: gpr_RDBUS = {8'h00, reg_EAL};
-            4'h4: gpr_RDBUS = {8'h00, reg_B};
-            4'h5: gpr_RDBUS = {8'h00, reg_C};
-            4'h6: gpr_RDBUS = {8'h00, reg_D};
-            4'h7: gpr_RDBUS = {8'h00, reg_E};
-            4'h8: gpr_RDBUS = {8'h00, reg_H};
-            4'h9: gpr_RDBUS = {8'h00, reg_L};
-            4'hA: gpr_RDBUS = reg_SP;
-            4'hB: gpr_RDBUS = {reg_V, reg_A};
-            4'hC: gpr_RDBUS = {reg_B, reg_C};
-            4'hD: gpr_RDBUS = {reg_D, reg_E};
-            4'hE: gpr_RDBUS = {reg_H, reg_L};
-            4'hF: gpr_RDBUS = {reg_EAH, reg_EAL};
-        endcase
-    end
-end
-
-/*
-OLDER IMPLEMENTATION
-//r addressing
-reg     [7:0]   reg_R, reg_R2, reg_R1;
-always @(*) begin
-    case(reg_OPCODE[2:0])
-        3'b000: reg_R = reg_V;
-        3'b001: reg_R = reg_A;
-        3'b010: reg_R = reg_B;
-        3'b011: reg_R = reg_C;
-        3'b100: reg_R = reg_D;
-        3'b101: reg_R = reg_E;
-        3'b110: reg_R = reg_H;
-        3'b111: reg_R = reg_L;
+    deu_pa = 16'h0000; deu_pb = 16'h0000;
+    case(mc_t0_src)
+        T0_SRC_R      : deu_pa = gpr_RDBUS; //{8'h00, reg_R};
+        T0_SRC_R2     : deu_pa = gpr_RDBUS; //{8'h00, reg_R2};
+        T0_SRC_R1     : deu_pa = gpr_RDBUS; //{8'h00, reg_R1};
+        T0_SRC_RP2    : deu_pa = gpr_RDBUS; //reg_RP2;
+        T0_SRC_RP     : deu_pa = gpr_RDBUS; //reg_RP;
+        T0_SRC_RP1    : deu_pa = gpr_RDBUS; //reg_RP1;
+        T0_SRC_SR     : deu_pa = spr_RDBUS;
+        T0_SRC_MD     : deu_pa = {reg_MDH, reg_MDL};
+        T0_SRC_MD0    : deu_pa = reg_MD0;
+        T0_SRC_A      : deu_pa = {8'h00, reg_A};
+        T0_SRC_EA     : deu_pa = {reg_EAH, reg_EAL};
+        T0_SRC_AUX    : deu_pa = reg_AUX;
+        default       : deu_pa = 16'h0000;
     endcase
 
-    case(reg_OPCODE[2:0])
-        3'b000: reg_R1 = reg_EAH;
-        3'b001: reg_R1 = reg_EAL;
-        3'b010: reg_R1 = reg_B;
-        3'b011: reg_R1 = reg_C;
-        3'b100: reg_R1 = reg_D;
-        3'b101: reg_R1 = reg_E;
-        3'b110: reg_R1 = reg_H;
-        3'b111: reg_R1 = reg_L;
-    endcase
-
-    case(reg_OPCODE[1:0])
-        2'b00: reg_R2 = reg_V;
-        2'b01: reg_R2 = reg_A;
-        2'b10: reg_R2 = reg_B;
-        2'b11: reg_R2 = reg_C;
-    endcase
-end
-
-//rp addressing
-reg     [15:0]   reg_RP2, reg_RP, reg_RP1;
-always @(*) begin
-    case(reg_OPCODE[6:4])
-        3'b000: reg_RP2 = reg_SP;
-        3'b001: reg_RP2 = {reg_B, reg_C};
-        3'b010: reg_RP2 = {reg_D, reg_E};
-        3'b011: reg_RP2 = {reg_H, reg_L};
-        3'b100: reg_RP2 = {reg_EAH, reg_EAL};
-        3'b101: reg_RP2 = 16'h0000; //not specified on the datasheet
-        3'b110: reg_RP2 = 16'h0000;
-        3'b111: reg_RP2 = 16'h0000;
-    endcase
-
-    case(reg_OPCODE[2:0])
-        3'b000: reg_RP1 = {reg_V, reg_A};
-        3'b001: reg_RP1 = {reg_B, reg_C};
-        3'b010: reg_RP1 = {reg_D, reg_E};
-        3'b011: reg_RP1 = {reg_H, reg_L};
-        3'b100: reg_RP1 = {reg_EAH, reg_EAL};
-        3'b101: reg_RP1 = 16'h0000;
-        3'b110: reg_RP1 = 16'h0000;
-        3'b111: reg_RP1 = 16'h0000;
-    endcase
-
-    case(reg_OPCODE[1:0])
-        2'b00: reg_RP = reg_SP;
-        2'b01: reg_RP = {reg_B, reg_C};
-        2'b10: reg_RP = {reg_D, reg_E};
-        2'b11: reg_RP = {reg_H, reg_L};
+    case(mc_t0_dst)
+        T0_DST_R      : deu_pb = gpr_RDBUS; //{8'h00, reg_R};
+        T0_DST_R2     : deu_pb = gpr_RDBUS; //{8'h00, reg_R2};
+        T0_DST_R1     : deu_pb = gpr_RDBUS; //{8'h00, reg_R1};
+        T0_DST_RP2    : deu_pb = gpr_RDBUS; //reg_RP2;
+        T0_DST_RP     : deu_pb = gpr_RDBUS; //reg_RP;
+        T0_DST_RP1    : deu_pb = gpr_RDBUS; //reg_RP1;
+        T0_DST_SR     : deu_pb = spr_RDBUS;
+        T0_DST_MD     : deu_pb = {reg_MDH, reg_MDL};
+        T0_DST_MD0    : deu_pb = reg_MD0;
+        T0_DST_MD1    : deu_pb = reg_MD1;
+        T0_DST_A      : deu_pb = {8'h00, reg_A};
+        T0_DST_C      : deu_pb = gpr_RDBUS;
+        T0_DST_EA     : deu_pb = {reg_EAH, reg_EAL};
+        T0_DST_BC     : deu_pb = gpr_RDBUS;
+        default       : deu_pb = 16'h0000;
     endcase
 end
 
 
-//rpa addressing
-reg     [15:0]   reg_RPA, reg_RPA2;
-always @(*) begin
-    //rpa, including auto inc/dec
-    case(reg_OPCODE[2:0])
-        3'b000: reg_RPA = 16'h0000;
-        3'b001: reg_RPA = {reg_B, reg_C};
-        3'b010: reg_RPA = {reg_D, reg_E};
-        3'b011: reg_RPA = {reg_H, reg_L};
-        3'b100: reg_RPA = {reg_D, reg_E}; //A+, use alu type 1 for auto inc/dec
-        3'b101: reg_RPA = {reg_H, reg_L}; //A+, use alu type 1 for auto inc/dec
-        3'b110: reg_RPA = {reg_D, reg_E}; //-A, use alu type 1 for auto inc/dec
-        3'b111: reg_RPA = {reg_H, reg_L}; //-A, use alu type 1 for auto inc/dec
-    endcase
 
-    //rpa2, +byte, +A, +B, +EA only
-    case(reg_OPCODE[2:0])
-        3'b000: reg_RPA2 = 16'h0000;
-        3'b001: reg_RPA2 = 16'h0000;
-        3'b010: reg_RPA2 = 16'h0000;
-        3'b011: reg_RPA2 = {reg_D, reg_E};
-        3'b100: reg_RPA2 = {reg_H, reg_L};
-        3'b101: reg_RPA2 = {reg_H, reg_L};
-        3'b110: reg_RPA2 = {reg_H, reg_L};
-        3'b111: reg_RPA2 = {reg_H, reg_L};
-    endcase
-end
-*/
-
-reg     [15:0]   reg_RPA2_OFFSET;
+reg     [15:0]   rpa2_offset;
 always @(*) begin
     //rpa2 addend select
     case(reg_OPCODE[2:0])
-        3'b000: reg_RPA2_OFFSET = 16'h0000;
-        3'b001: reg_RPA2_OFFSET = 16'h0000;
-        3'b010: reg_RPA2_OFFSET = 16'h0000;
-        3'b011: reg_RPA2_OFFSET = {8'h00, reg_MDH}; //use alu type 0 to select an addend automatically
-        3'b100: reg_RPA2_OFFSET = {8'h00, reg_A}; 
-        3'b101: reg_RPA2_OFFSET = {8'h00, reg_B};
-        3'b110: reg_RPA2_OFFSET = {reg_EAH, reg_EAL};
-        3'b111: reg_RPA2_OFFSET = {8'h00, reg_MDH};
+        3'b011: rpa2_offset = {8'h00, reg_MD0};
+        3'b100: rpa2_offset = {8'h00, reg_A}; 
+        3'b101: rpa2_offset = {8'h00, reg_B};
+        3'b110: rpa2_offset = {reg_EAH, reg_EAL};
+        3'b111: rpa2_offset = {8'h00, reg_MD0};
+        default: rpa2_offset = 16'h0000;
     endcase
 end
 
-//ALU port A and B
-reg     [15:0]  alu_pa, alu_pb; 
+
+//Address execution unit port A and B
+reg     [15:0]  aeu_pa, aeu_pb; 
 always @(*) begin
-    alu_pa = 16'h0000; alu_pb = 16'h0000;
-
-    if(mc_type == MCTYPE0) begin
-        case(mc_sa_dst)
-            SA_DST_R      : alu_pa = gpr_RDBUS; //{8'h00, reg_R};
-            SA_DST_R2     : alu_pa = gpr_RDBUS; //{8'h00, reg_R2};
-            SA_DST_R1     : alu_pa = gpr_RDBUS; //{8'h00, reg_R1};
-            SA_DST_RP2    : alu_pa = gpr_RDBUS; //reg_RP2;
-            SA_DST_C      : alu_pa = gpr_RDBUS; //{8'h00, reg_C};
-            SA_DST_SP     : alu_pa = gpr_RDBUS; //reg_SP;
-            SA_DST_RP     : alu_pa = gpr_RDBUS; //reg_RP;
-            SA_DST_RP1    : alu_pa = gpr_RDBUS; //reg_RP1;
-            SA_DST_SR_SR1 : alu_pa = spr_RDBUS;
-            SA_DST_SR2    : alu_pa = spr_RDBUS;
-            SA_DST_SR3    : alu_pa = spr_RDBUS;
-            SA_DST_MDL    : alu_pa = {8'h00, reg_MDL};
-            SA_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
-            SA_DST_MA     : alu_pa = reg_MA;
-            SA_DST_PC     : alu_pa = reg_PC;
-            SA_DST_A      : alu_pa = {8'h00, reg_A};
-            SA_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
-            default       : alu_pa = 16'h0000;
+    aeu_pa = 16'h0000; aeu_pb = 16'h0000;
+    case(mc_t1_src)
+        T1_SRC_A_IM       : aeu_pa = reg_ADDR_IM;
+        T1_SRC_A_V_WA     : aeu_pa = {reg_V, reg_ADDR_WA};
+        T1_SRC_A_TA       : aeu_pa = {8'h00, 2'b10, reg_OPCODE[4:0], 1'b0};
+        T1_SRC_A_FA       : aeu_pa = {5'b00001, reg_OPCODE[2:0], reg_MD0};
+        T1_SRC_A_REL_S    : aeu_pa = {{11{reg_OPCODE[5]}}, reg_OPCODE[4:0]}; //sign extension
+        T1_SRC_A_REL_L    : aeu_pa = {{8{reg_OPCODE[0]}}, reg_MD0};
+        T1_SRC_A_INT      : aeu_pa = irq_addr; //selected externally
+        T1_SRC_RPA_OFFSET : aeu_pa = rpa2_offset;
+        T1_SRC_RPA        : aeu_pa = gpr_RDBUS;
+        T1_SRC_RPA2       : aeu_pa = gpr_RDBUS;
+        T1_SRC_BC         : aeu_pa = ;
+        T1_SRC_DE         : aeu_pa = ;
+        T1_SRC_HL         : aeu_pa = ;
+        T1_SRC_SP         : aeu_pa = ;
+        T1_SRC_PC         : aeu_pa = ;
+        T1_SRC_MA         : aeu_pa = ;
+    endcase
+        
+        /*
+        case(mc_t0_src)
+            T0_SRC_R          : deu_pb = gpr_RDBUS; //{8'h00, reg_R};
+            T0_SRC_R2         : deu_pb = gpr_RDBUS; //{8'h00, reg_R2};
+            T0_SRC_R1         : deu_pb = gpr_RDBUS; //{8'h00, reg_R1};
+            T0_SRC_RP2        : deu_pb = gpr_RDBUS; //reg_RP2;
+            T0_SRC_RP         : deu_pb = gpr_RDBUS; //reg_RP;
+            T0_SRC_RP1        : deu_pb = gpr_RDBUS; //reg_RP1;
+            T0_SRC_RPA        : deu_pb = gpr_RDBUS; //reg_RPA;
+            T0_SRC_RPA2       : deu_pb = gpr_RDBUS; //reg_RPA2;
+            T0_SRC_SR_SR1     : deu_pb = spr_RDBUS;
+            T0_SRC_SR2        : deu_pb = spr_RDBUS;
+            T0_SRC_SR4        : deu_pb = spr_RDBUS;
+            T0_SRC_MDH        : deu_pb = {8'h00, reg_MDH};
+            T0_SRC_MD         : deu_pb = {reg_MDH, reg_MDL};
+            T0_SRC_MDI        : deu_pb = reg_MDI;
+            T0_SRC_A          : deu_pb = {8'h00, reg_A};
+            T0_SRC_EA         : deu_pb = {reg_EAH, reg_EAL};
+            T0_SRC_ADDR_V_WA  : deu_pb = {reg_V, reg_MDI[7:0]};
+            T0_SRC_ADDR_TA    : deu_pb = {8'h00, 2'b10, reg_OPCODE[4:0], 1'b0};
+            T0_SRC_ADDR_FA    : deu_pb = {5'b00001, reg_OPCODE[2:0], reg_MDI[7:0]};
+            T0_SRC_ADDR_REL_S : deu_pb = {{11{reg_OPCODE[5]}}, reg_OPCODE[4:0]}; //sign extension
+            T0_SRC_ADDR_REL_L : deu_pb = {{8{reg_OPCODE[0]}}, reg_MDI[7:0]};
+            T0_SRC_ADDR_INT   : deu_pb = irq_addr; //selected externally
+            T0_SRC_SUB2       : deu_pb = 16'hFFFE;
+            T0_SRC_SUB1       : deu_pb = 16'hFFFF;
+            T0_SRC_ZERO       : deu_pb = 16'h0000;
+            T0_SRC_ADD1       : deu_pb = 16'h0001;
+            T0_SRC_ADD2       : deu_pb = 16'h0002;
+            T0_SRC_TEMP       : deu_pb = reg_AUX;
+            T0_SRC_OFFSET     : deu_pb = rpa2_offset;
+            default       : deu_pb = 16'h0000;
         endcase
-
-        case(mc_sb)
-            SB_R          : alu_pb = gpr_RDBUS; //{8'h00, reg_R};
-            SB_R2         : alu_pb = gpr_RDBUS; //{8'h00, reg_R2};
-            SB_R1         : alu_pb = gpr_RDBUS; //{8'h00, reg_R1};
-            SB_RP2        : alu_pb = gpr_RDBUS; //reg_RP2;
-            SB_RP         : alu_pb = gpr_RDBUS; //reg_RP;
-            SB_RP1        : alu_pb = gpr_RDBUS; //reg_RP1;
-            SB_RPA        : alu_pb = gpr_RDBUS; //reg_RPA;
-            SB_RPA2       : alu_pb = gpr_RDBUS; //reg_RPA2;
-            SB_SR_SR1     : alu_pb = spr_RDBUS;
-            SB_SR2        : alu_pb = spr_RDBUS;
-            SB_SR4        : alu_pb = spr_RDBUS;
-            SB_MDH        : alu_pb = {8'h00, reg_MDH};
-            SB_MD         : alu_pb = {reg_MDH, reg_MDL};
-            SB_MDI        : alu_pb = reg_MDI;
-            SB_A          : alu_pb = {8'h00, reg_A};
-            SB_EA         : alu_pb = {reg_EAH, reg_EAL};
-            SB_ADDR_V_WA  : alu_pb = {reg_V, reg_MDI[7:0]};
-            SB_ADDR_TA    : alu_pb = {8'h00, 2'b10, reg_OPCODE[4:0], 1'b0};
-            SB_ADDR_FA    : alu_pb = {5'b00001, reg_OPCODE[2:0], reg_MDI[7:0]};
-            SB_ADDR_REL_S : alu_pb = {{11{reg_OPCODE[5]}}, reg_OPCODE[4:0]}; //sign extension
-            SB_ADDR_REL_L : alu_pb = {{8{reg_OPCODE[0]}}, reg_MDI[7:0]};
-            SB_ADDR_INT   : alu_pb = irq_addr; //selected externally
-            SB_SUB2       : alu_pb = 16'hFFFE;
-            SB_SUB1       : alu_pb = 16'hFFFF;
-            SB_ZERO       : alu_pb = 16'h0000;
-            SB_ADD1       : alu_pb = 16'h0001;
-            SB_ADD2       : alu_pb = 16'h0002;
-            SB_TEMP       : alu_pb = reg_TEMP;
-            SB_OFFSET     : alu_pb = reg_RPA2_OFFSET;
-            default       : alu_pb = 16'h0000;
-        endcase
+        */
     end
     else if(mc_type == MCTYPE1) begin
-        case(mc_sc_dst)
-            SC_DST_R2     : alu_pa = gpr_RDBUS; //{8'h00, reg_R2};
-            SC_DST_BC     : alu_pa = gpr_RDBUS; //{reg_B, reg_C};
-            SC_DST_A      : alu_pa = {8'h00, reg_A};
-            SC_DST_EA     : alu_pa = {reg_EAH, reg_EAL};
-            SC_DST_MDL    : alu_pa = {8'h00, reg_MDL};
-            SC_DST_MDH    : alu_pa = {8'h00, reg_MDH};
-            SC_DST_MD     : alu_pa = {reg_MDH, reg_MDL};
-            SC_DST_MA     : alu_pa = reg_MA;
-            SC_DST_PSW    : alu_pa = reg_PSW;
-            SC_DST_PC     : alu_pa = reg_PC;
-            default       : alu_pa = 16'h0000;
+        
+
+        case(mc_t1_dst)
+            T1_SRC_R2     : deu_pa = gpr_RDBUS; //{8'h00, reg_R2};
+            T1_SRC_BC     : deu_pa = gpr_RDBUS; //{reg_B, reg_C};
+            T1_SRC_A      : deu_pa = {8'h00, reg_A};
+            T1_SRC_EA     : deu_pa = {reg_EAH, reg_EAL};
+            T1_SRC_MDL    : deu_pa = {8'h00, reg_MDL};
+            T1_SRC_MDH    : deu_pa = {8'h00, reg_MDH};
+            T1_SRC_MD     : deu_pa = {reg_MDH, reg_MDL};
+            T1_SRC_MA     : deu_pa = reg_MA;
+            T1_SRC_PSW    : deu_pa = reg_PSW;
+            T1_SRC_PC     : deu_pa = reg_PC;
+            default       : deu_pa = 16'h0000;
         endcase
 
-        case(mc_sd)
-            SD_BC         : alu_pb = gpr_RDBUS; //{reg_B, reg_C};
-            SD_DE         : alu_pb = gpr_RDBUS; //{reg_D, reg_E};
-            SD_HL         : alu_pb = gpr_RDBUS; //{reg_H, reg_L};
-            SD_SP         : alu_pb = gpr_RDBUS; //reg_SP;
-            SD_RPA        : alu_pb = gpr_RDBUS; //reg_RPA;
-            SD_A          : alu_pb = {8'h00, reg_A};
-            SD_EA         : alu_pb = {reg_EAH, reg_EAL};
-            SD_MDH        : alu_pb = {8'h00, reg_MDH};
-            SD_MD         : alu_pb = {reg_MDH, reg_MDL};
-            SD_PC         : alu_pb = reg_PC;
-            SD_PSW        : alu_pb = reg_PSW;
-            default       : alu_pb = 16'h0000;
-        endcase
+        
     end
     else if(mc_type == MCTYPE3) begin
-        if(mc_s_cond_pc_dec) begin
-            alu_pa = reg_PC;
-            alu_pb = reg_C == 8'hFF ? 16'h0000 : 16'hFFFF;
+        if(mc_t3_cond_pc_dec) begin
+            deu_pa = reg_PC;
+            deu_pb = reg_C == 8'hFF ? 16'h0000 : 16'hFFFF;
         end
         else begin
-            alu_pa = 16'h0000;
-            alu_pb = 16'h0000;
+            deu_pa = 16'h0000;
+            deu_pb = 16'h0000;
         end
     end
 end
@@ -1963,45 +1861,45 @@ always @(*) begin
     alu_shifter = 16'h00;
     alu_shifter_co = 1'b0;
 
-    if(mc_type == MCTYPE1) if(mc_t1_alusel == 4'h7) begin
+    if(mc_type == MCTYPE1) if(mc_t0_deusel == 4'h7) begin
         case(shift_code)
             4'b0000: begin alu_shifter[7] = 1'b0; 
-                           alu_shifter[6:0] = alu_pa[7:1];
-                           alu_shifter_co = alu_pa[0]; end //SLRC, skip condition: CARRY
+                           alu_shifter[6:0] = deu_pa[7:1];
+                           alu_shifter_co = deu_pa[0]; end //SLRC, skip condition: CARRY
             4'b0001: ; //no instruction specified
             4'b0010: begin alu_shifter[7] = 1'b0; 
-                           alu_shifter[6:0] = alu_pa[7:1];
-                           alu_shifter_co = alu_pa[0]; end //SLR
+                           alu_shifter[6:0] = deu_pa[7:1];
+                           alu_shifter_co = deu_pa[0]; end //SLR
             4'b0011: begin alu_shifter[7] = flag_C;
-                           alu_shifter[6:0] = alu_pa[7:1];
-                           alu_shifter_co = alu_pa[0]; end //RLR
+                           alu_shifter[6:0] = deu_pa[7:1];
+                           alu_shifter_co = deu_pa[0]; end //RLR
             4'b0100: begin alu_shifter[0] = 1'b0; 
-                           alu_shifter[7:1] = alu_pa[6:0];
-                           alu_shifter_co = alu_pa[7]; end //SLLC, skip condition: CARRY
+                           alu_shifter[7:1] = deu_pa[6:0];
+                           alu_shifter_co = deu_pa[7]; end //SLLC, skip condition: CARRY
             4'b0101: ; //no instruction specified
             4'b0110: begin alu_shifter[0] = 1'b0; 
-                           alu_shifter[7:1] = alu_pa[6:0];
-                           alu_shifter_co = alu_pa[7]; end //SLL
+                           alu_shifter[7:1] = deu_pa[6:0];
+                           alu_shifter_co = deu_pa[7]; end //SLL
             4'b0111: begin alu_shifter[0] = flag_C;
-                           alu_shifter[7:1] = alu_pa[6:0];
-                           alu_shifter_co = alu_pa[7]; end //RLL
+                           alu_shifter[7:1] = deu_pa[6:0];
+                           alu_shifter_co = deu_pa[7]; end //RLL
 
             4'b1000: ; //no instruction specified
             4'b1001: ; //no instruction specified
             4'b1010: begin alu_shifter[15] = 1'b0;
-                           alu_shifter[14:0] = alu_pa[15:1];
-                           alu_shifter_co = alu_pa[0]; end //DSLR
+                           alu_shifter[14:0] = deu_pa[15:1];
+                           alu_shifter_co = deu_pa[0]; end //DSLR
             4'b1011: begin alu_shifter[15] = flag_C;
-                           alu_shifter[14:0] = alu_pa[15:1];
-                           alu_shifter_co = alu_pa[0]; end //DRLR
+                           alu_shifter[14:0] = deu_pa[15:1];
+                           alu_shifter_co = deu_pa[0]; end //DRLR
             4'b1100: ; //no instruction specified
             4'b1101: ; //no instruction specified
             4'b1110: begin alu_shifter[0] = 1'b0;
-                           alu_shifter[15:1] = alu_pa[14:0];
-                           alu_shifter_co = alu_pa[15]; end //DSLL
+                           alu_shifter[15:1] = deu_pa[14:0];
+                           alu_shifter_co = deu_pa[15]; end //DSLL
             4'b1111: begin alu_shifter[0] = flag_C;
-                           alu_shifter[15:1] = alu_pa[14:0];
-                           alu_shifter_co = alu_pa[15]; end //DRLL
+                           alu_shifter[15:1] = deu_pa[14:0];
+                           alu_shifter_co = deu_pa[15]; end //DRLL
         endcase
     end
 end
@@ -2011,43 +1909,52 @@ end
 //  ALU: MUL/DIV sequencer
 //
 
-reg     [4:0]   alu_muldiv_cntr;
+reg     [4:0]   deu_muldiv_cntr;
 always @(posedge emuclk) begin
     if(!mrst_n) begin
-        alu_muldiv_cntr <= 5'd31;
+        deu_muldiv_cntr <= 5'd31;
     end
     else begin
         if(cycle_tick) begin
-            if(alu_mul_start) begin
-                if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd16;
+            if(deu_mul_start) begin
+                if(deu_muldiv_cntr == 5'd31) deu_muldiv_cntr <= 5'd16;
             end
-            else if(alu_div_start) begin
-                if(alu_muldiv_cntr == 5'd31) alu_muldiv_cntr <= 5'd0;
+            else if(deu_div_start) begin
+                if(deu_muldiv_cntr == 5'd31) deu_muldiv_cntr <= 5'd0;
             end
             else begin
-                if(alu_muldiv_cntr != 5'd31) alu_muldiv_cntr <= (alu_muldiv_cntr == 5'd23 || alu_muldiv_cntr == 5'd15) ? 5'd31 : alu_muldiv_cntr + 5'd1;
-                else alu_muldiv_cntr <= 5'd31;
+                if(deu_muldiv_cntr != 5'd31) deu_muldiv_cntr <= (deu_muldiv_cntr == 5'd23 || deu_muldiv_cntr == 5'd15) ? 5'd31 : deu_muldiv_cntr + 5'd1;
+                else deu_muldiv_cntr <= 5'd31;
             end
         end
     end
 end
 
-reg     [7:0]   alu_muldiv_r2_temp;
+reg     [7:0]   deu_muldiv_r2_temp;
 always @(posedge emuclk) if(cycle_tick) begin
-    if(mc_type == MCTYPE1 && (mc_t1_alusel == 4'h4 || mc_t1_alusel == 4'h5)) alu_muldiv_r2_temp <= gpr_RDBUS[7:0];
+    if(mc_type == MCTYPE1 && (mc_t0_deusel == 4'h4 || mc_t0_deusel == 4'h5)) deu_muldiv_r2_temp <= gpr_RDBUS[7:0];
 end
 
-wire    [15:0]  alu_mul_pa = {reg_EAH, reg_EAL};
-wire    [15:0]  alu_mul_pb = alu_muldiv_r2_temp[alu_muldiv_cntr[2:0]] ? ({8'h00, reg_A} << alu_muldiv_cntr[2:0]) : 16'h0000;
+always @(posedge emuclk) begin
+    if(!mrst_n) begin
+        reg_AUX <= 16'h0000;
+    end
+    else begin if(cycle_tick) begin
+        if(reg_AUX_wr) reg_AUX <= deu_aux_output;
+    end end
+end
 
-wire    [15:0]  alu_div_pa = reg_TEMP;
-wire    [15:0]  alu_div_pb = ~{8'h00, alu_muldiv_r2_temp};
+wire    [15:0]  deu_mul_pa = {reg_EAH, reg_EAL};
+wire    [15:0]  deu_mul_pb = deu_muldiv_r2_temp[deu_muldiv_cntr[2:0]] ? ({8'h00, reg_A} << deu_muldiv_cntr[2:0]) : 16'h0000;
 
-wire    [31:0]  a = {reg_TEMP, {reg_EAH, reg_EAL}};
+wire    [15:0]  deu_div_pa = reg_AUX;
+wire    [15:0]  deu_div_pb = ~{8'h00, deu_muldiv_r2_temp};
+
+wire    [31:0]  a = {reg_AUX, {reg_EAH, reg_EAL}};
 wire    [31:0]  b = {alu_adder_out, {reg_EAH, reg_EAL}};
-wire    [31:0]  alu_div_out = alu_adder_out[15] ? {a[30:0], 1'b0} :
+wire    [31:0]  deu_div_out = alu_adder_out[15] ? {a[30:0], 1'b0} :
                                                   {b[30:0], 1'b1};
-wire    [7:0]   alu_div_remainder = alu_adder_out[15] ? reg_TEMP[7:0] : alu_adder_out[7:0];
+wire    [7:0]   deu_div_remainder = alu_adder_out[15] ? reg_AUX[7:0] : alu_adder_out[7:0];
 
 
 //
@@ -2059,171 +1966,171 @@ always @(*) begin
     alu_adder_op0 = 16'h0000; alu_adder_op1 = 16'h0000; alu_adder_cin = 1'b0; //FA inputs
     alu_adder_borrow_mode = 1'b0;
 
-    alu_output = alu_pa; //result output
-    alu_ma_output = alu_pa; //Memory Address output
+    deu_output = deu_pa; //result output
+    alu_ma_output = deu_pa; //Memory Address output
 
-    alu_digrot_TEMP_wr = 1'b0; //TEMP register write
-    alu_temp_output = alu_pa; //TEMP register data output
+    alu_digrot_aux_wr = 1'b0; //TEMP register write
+    deu_aux_output = deu_pa; //TEMP register data output
 
-    alu_muldiv_reg_TEMP_wr = 1'b0;
-    alu_muldiv_reg_EA_wr = 1'b0;
+    deu_muldiv_aux_wr = 1'b0;
+    deu_muldiv_ea_wr = 1'b0;
 
     //pa = first operand, pb = second operand, like Vwa
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd0) begin
-            alu_ma_output = alu_pb; //out<-pb bypass
-            alu_output = alu_pb;
+            alu_ma_output = deu_pb; //out<-pb bypass
+            deu_output = deu_pb;
         end
         else if(mc_t0_alusel == 2'd1) begin
             alu_ma_output = alu_adder_out;
-            alu_output = alu_adder_out;
-            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0;
+            deu_output = alu_adder_out;
+            alu_adder_op0 = deu_pa; alu_adder_op1 = deu_pb; alu_adder_cin = 1'b0;
         end
         else begin
             case(arith_code)
-                4'h0: alu_output = alu_pb;                        //MVI(move)
-                4'h1: alu_output = alu_pa ^ alu_pb;               //XOR(bitwise XOR)
-                4'h2: begin alu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0; end
-                4'h3: begin alu_output = alu_adder_out;           //SUBNB(check skip condition: NO BORROW; 2's complement)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
+                4'h0: deu_output = deu_pb;                        //MVI(move)
+                4'h1: deu_output = deu_pa ^ deu_pb;               //XOR(bitwise XOR)
+                4'h2: begin deu_output = alu_adder_out;           //ADDNC(check skip condition: NO CARRY)
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = deu_pb; alu_adder_cin = 1'b0; end
+                4'h3: begin deu_output = alu_adder_out;           //SUBNB(check skip condition: NO BORROW; 2's complement)
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = ~deu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'h4: begin alu_output = alu_adder_out;           //ADD
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0; end
-                4'h5: begin alu_output = alu_adder_out;           //ADD with c_comb
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = flag_C; end
-                4'h6: begin alu_output = alu_adder_out;           //SUB
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
+                4'h4: begin deu_output = alu_adder_out;           //ADD
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = deu_pb; alu_adder_cin = 1'b0; end
+                4'h5: begin deu_output = alu_adder_out;           //ADD with c_comb
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = deu_pb; alu_adder_cin = flag_C; end
+                4'h6: begin deu_output = alu_adder_out;           //SUB
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = ~deu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'h7: begin alu_output = alu_adder_out;           //SUB with borrow
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = ~flag_C; 
+                4'h7: begin deu_output = alu_adder_out;           //SUB with borrow
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = ~deu_pb; alu_adder_cin = ~flag_C; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'h8: alu_output = alu_pa & alu_pb;               //AND(bitwise AND)
-                4'h9: alu_output = alu_pa | alu_pb;               //OR(bitwise OR)
-                4'hA: begin alu_temp_output = alu_adder_out;      //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b0; 
+                4'h8: deu_output = deu_pa & deu_pb;               //AND(bitwise AND)
+                4'h9: deu_output = deu_pa | deu_pb;               //OR(bitwise OR)
+                4'hA: begin deu_aux_output = alu_adder_out;      //SGT(skip if greater than; PA-PB-1, adding the inverted PB has the same effect)
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = ~deu_pb; alu_adder_cin = 1'b0; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'hB: begin alu_temp_output = alu_adder_out;      //SLT(skip if less than; check skip condition: BORROW; 2's complement)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1;
+                4'hB: begin deu_aux_output = alu_adder_out;      //SLT(skip if less than; check skip condition: BORROW; 2's complement)
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = ~deu_pb; alu_adder_cin = 1'b1;
                             alu_adder_borrow_mode = 1'b1; end
-                4'hC: alu_temp_output = alu_pa & alu_pb;          //AND(check skip condition: NO ZERO)
-                4'hD: alu_temp_output = alu_pa | alu_pb;          //OR(check skip condition: ZERO)
-                4'hE: begin alu_temp_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO ZERO)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
+                4'hC: deu_aux_output = deu_pa & deu_pb;          //AND(check skip condition: NO ZERO)
+                4'hD: deu_aux_output = deu_pa | deu_pb;          //OR(check skip condition: ZERO)
+                4'hE: begin deu_aux_output = alu_adder_out;      //SNE(skip on not equal; check skip condition: NO ZERO)
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = ~deu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
-                4'hF: begin alu_temp_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: ZERO)
-                            alu_adder_op0 = alu_pa; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1; 
+                4'hF: begin deu_aux_output = alu_adder_out;      //SEQ(skip on equal; check skip condition: ZERO)
+                            alu_adder_op0 = deu_pa; alu_adder_op1 = ~deu_pb; alu_adder_cin = 1'b1; 
                             alu_adder_borrow_mode = 1'b1; end
             endcase
         end
     end
     else if(mc_type == MCTYPE1) begin
-        if(mc_t1_alusel == 4'h0) begin 
-                alu_ma_output = alu_pb; //out<-pb bypass
-                alu_output = alu_pb;
+        if(mc_t0_deusel == 4'h0) begin 
+                alu_ma_output = deu_pb; //out<-pb bypass
+                deu_output = deu_pb;
         end
-        else if(mc_t1_alusel == 4'h1) begin //2's complement
-            alu_output = alu_adder_out;
-            alu_adder_op0 = 16'h0000; alu_adder_op1 = ~alu_pb; alu_adder_cin = 1'b1;
+        else if(mc_t0_deusel == 4'h1) begin //2's complement
+            deu_output = alu_adder_out;
+            alu_adder_op0 = 16'h0000; alu_adder_op1 = ~deu_pb; alu_adder_cin = 1'b1;
         end
-        else if(mc_t1_alusel == 4'h2) begin //DAA, kinda shit
-            alu_output = alu_adder_out;
-            alu_adder_op0 = alu_pa; alu_adder_cin = 1'b0;
+        else if(mc_t0_deusel == 4'h2) begin //DAA, kinda shit
+            deu_output = alu_adder_out;
+            alu_adder_op0 = deu_pa; alu_adder_cin = 1'b0;
             if(flag_HC) begin
-                if(flag_C == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                if(flag_C == 1'b0 && deu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
                 else alu_adder_op1 = 16'h0066;
             end
             else begin
-                if(alu_pa[3:0] <= 4'h9) begin
-                    if(flag_C == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0000;
+                if(deu_pa[3:0] <= 4'h9) begin
+                    if(flag_C == 1'b0 && deu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0000;
                     else alu_adder_op1 = 16'h0060;
                 end
                 else begin
-                    if(flag_C == 1'b0 && alu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
+                    if(flag_C == 1'b0 && deu_pa[7:4] <= 4'h9) alu_adder_op1 = 16'h0006;
                     else alu_adder_op1 = 16'h0066;
                 end
             end
         end
-        else if(mc_t1_alusel == 4'h3) begin //RLD(even) RRD(odd) PA=MDin, PB=reg_A
-            alu_output = reg_OPCODE[0] ? {alu_pb[3:0], alu_pa[7:4]} : {alu_pa[3:0], alu_pb[3:0]}; //to MD
-            alu_temp_output = reg_OPCODE[0] ? {alu_pb[7:4], alu_pa[3:0]} : {alu_pb[7:4], alu_pa[7:4]}; //to TEMP->A
+        else if(mc_t0_deusel == 4'h3) begin //RLD(even) RRD(odd) PA=MDin, PB=reg_A
+            deu_output = reg_OPCODE[0] ? {deu_pb[3:0], deu_pa[7:4]} : {deu_pa[3:0], deu_pb[3:0]}; //to MD
+            deu_aux_output = reg_OPCODE[0] ? {deu_pb[7:4], deu_pa[3:0]} : {deu_pb[7:4], deu_pa[7:4]}; //to TEMP->A
 
-            alu_digrot_TEMP_wr = 1'b1;
+            alu_digrot_aux_wr = 1'b1;
         end
-        else if(mc_t1_alusel == 4'h4) begin //MUL pa=EA, pb=r2
-            alu_output = 16'h0000; //reset EA
+        else if(mc_t0_deusel == 4'h4) begin //MUL pa=EA, pb=r2
+            deu_output = 16'h0000; //reset EA
         end
-        else if(mc_t1_alusel == 4'h5) begin //DIV
-            alu_output = {alu_pa[14:0], 1'b0};
-            alu_temp_output = {15'd0, alu_pa[15]};
+        else if(mc_t0_deusel == 4'h5) begin //DIV
+            deu_output = {deu_pa[14:0], 1'b0};
+            deu_aux_output = {15'd0, deu_pa[15]};
 
-            alu_muldiv_reg_TEMP_wr = 1'b1;
+            deu_muldiv_aux_wr = 1'b1;
         end
-        else if(mc_t1_alusel == 4'h7) begin //shift 
-            alu_output = alu_shifter;
+        else if(mc_t0_deusel == 4'h7) begin //shift 
+            deu_output = alu_shifter;
         end
-        else if(mc_t1_alusel == 4'h8) begin //PUSH, -ADDR
-            alu_adder_op0 = 16'hFFFF; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
+        else if(mc_t0_deusel == 4'h8) begin //PUSH, -ADDR
+            alu_adder_op0 = 16'hFFFF; alu_adder_op1 = deu_pb; alu_adder_cin <= 1'b0;
 
-            alu_output = alu_adder_out;
+            deu_output = alu_adder_out;
             alu_ma_output = alu_adder_out;
         end
-        else if(mc_t1_alusel == 4'h9) begin //POP, ADDR+
-            alu_adder_op0 = 16'h0001; alu_adder_op1 = alu_pb; alu_adder_cin <= 1'b0;
+        else if(mc_t0_deusel == 4'h9) begin //POP, ADDR+
+            alu_adder_op0 = 16'h0001; alu_adder_op1 = deu_pb; alu_adder_cin <= 1'b0;
 
-            alu_output = alu_adder_out;
-            alu_ma_output = alu_pb;
+            deu_output = alu_adder_out;
+            alu_ma_output = deu_pb;
         end
-        else if(mc_t1_alusel == 4'hA) begin //rpa auto inc/dec
+        else if(mc_t0_deusel == 4'hA) begin //rpa auto inc/dec
             if(reg_OPCODE[2]) begin
                 alu_adder_op0 = reg_OPCODE[1] ? 16'hFFFF : 16'h0001;
             end
             else alu_adder_op0 = 16'h0000;
-            alu_adder_op1 = alu_pb;
+            alu_adder_op1 = deu_pb;
             alu_adder_cin = 1'b0;
 
-            alu_output = alu_adder_out;
-            alu_ma_output = alu_pb;
+            deu_output = alu_adder_out;
+            alu_ma_output = deu_pb;
         end
-        else if(mc_t1_alusel == 4'hB) begin //INC
-            alu_adder_op0 = alu_pa; alu_adder_op1 = 16'h0001; alu_adder_cin = 1'b0;
+        else if(mc_t0_deusel == 4'hB) begin //INC
+            alu_adder_op0 = deu_pa; alu_adder_op1 = 16'h0001; alu_adder_cin = 1'b0;
 
-            alu_output = alu_adder_out;
+            deu_output = alu_adder_out;
         end
-        else if(mc_t1_alusel == 4'hC) begin //DEC
-            alu_adder_op0 = alu_pa; alu_adder_op1 = 16'hFFFF; alu_adder_cin = 1'b0;
+        else if(mc_t0_deusel == 4'hC) begin //DEC
+            alu_adder_op0 = deu_pa; alu_adder_op1 = 16'hFFFF; alu_adder_cin = 1'b0;
             alu_adder_borrow_mode = 1'b1;
 
-            alu_output = alu_adder_out;
+            deu_output = alu_adder_out;
         end
     end
     else if(mc_type == MCTYPE3) begin
-        if(mc_s_cond_pc_dec) begin
-            alu_adder_op0 = alu_pa; alu_adder_op1 = alu_pb; alu_adder_cin = 1'b0;
+        if(mc_t3_cond_pc_dec) begin
+            alu_adder_op0 = deu_pa; alu_adder_op1 = deu_pb; alu_adder_cin = 1'b0;
 
-            alu_output = alu_adder_out;
+            deu_output = alu_adder_out;
         end
         else begin
-            if(alu_muldiv_cntr != 5'd31) begin
-                if(alu_muldiv_cntr[4]) begin //multiply
-                    alu_muldiv_reg_EA_wr = 1'b1;
+            if(deu_muldiv_cntr != 5'd31) begin
+                if(deu_muldiv_cntr[4]) begin //multiply
+                    deu_muldiv_ea_wr = 1'b1;
 
-                    alu_adder_op0 = alu_mul_pa; //reg EA
-                    alu_adder_op1 = alu_mul_pb; //A * r2, shifted and masked
+                    alu_adder_op0 = deu_mul_pa; //reg EA
+                    alu_adder_op1 = deu_mul_pb; //A * r2, shifted and masked
                     alu_adder_cin = 1'b0;
 
-                    alu_output = alu_adder_out;
+                    deu_output = alu_adder_out;
                 end
                 else begin
-                    alu_muldiv_reg_TEMP_wr = 1'b1; //alu_muldiv_cntr[3:0] == 4'd15 ? 1'b0 : 1'b1;
-                    alu_muldiv_reg_EA_wr = 1'b1;
+                    deu_muldiv_aux_wr = 1'b1; //deu_muldiv_cntr[3:0] == 4'd15 ? 1'b0 : 1'b1;
+                    deu_muldiv_ea_wr = 1'b1;
                     
-                    alu_adder_op0 = alu_div_pa;  //reg EA
-                    alu_adder_op1 = alu_div_pb; //-r2
+                    alu_adder_op0 = deu_div_pa;  //reg EA
+                    alu_adder_op1 = deu_div_pb; //-r2
                     alu_adder_cin = 1'b1;
                     
-                    alu_output = alu_div_out[15:0];
-                    alu_temp_output = alu_muldiv_cntr[3:0] == 4'd15 ? {8'h00, alu_div_remainder} : alu_div_out[31:16];
+                    deu_output = deu_div_out[15:0];
+                    deu_aux_output = deu_muldiv_cntr[3:0] == 4'd15 ? {8'h00, deu_div_remainder} : deu_div_out[31:16];
                 end
             end
         end
@@ -2253,14 +2160,14 @@ always @(*) begin
 
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
-            if(is_arith_eval_op) z_comb = data_w_nb ? alu_temp_output == 16'h0000 : alu_temp_output[7:0] == 8'h00;
-            else                 z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00;
+            if(is_arith_eval_op) z_comb = deu_dsize ? deu_aux_output == 16'h0000 : deu_aux_output[7:0] == 8'h00;
+            else                 z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00;
         end
     end
     else if(mc_type == MCTYPE1) begin
-             if(mc_t1_alusel == 4'h2) z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00; //DAA
-        else if(mc_t1_alusel == 4'hB) z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00; //INC
-        else if(mc_t1_alusel == 4'hC) z_comb = data_w_nb ? alu_output == 16'h0000 : alu_output[7:0] == 8'h00; //DEC
+             if(mc_t0_deusel == 4'h2) z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00; //DAA
+        else if(mc_t0_deusel == 4'hB) z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00; //INC
+        else if(mc_t0_deusel == 4'hC) z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00; //DEC
     end
 end
 
@@ -2296,36 +2203,36 @@ always @(*) begin
     if(mc_type == MCTYPE0) begin
         if(mc_t0_alusel == 2'd2 || mc_t0_alusel == 2'd3) begin
             case(arith_code)
-                4'h2: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADDNC
-                4'h3: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUBNB
-                4'h4: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADD
-                4'h5: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADC
-                4'h6: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUB
-                4'h7: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SBB
-                4'hA: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SGT
-                4'hB: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SLT
-                4'hE: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SNE
-                4'hF: c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SEQ
+                4'h2: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADDNC
+                4'h3: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUBNB
+                4'h4: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADD
+                4'h5: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //ADC
+                4'h6: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SUB
+                4'h7: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SBB
+                4'hA: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SGT
+                4'hB: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SLT
+                4'hE: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SNE
+                4'hF: c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode; //SEQ
                 default: c_comb = flag_C;
             endcase
         end
     end
     else if(mc_type == MCTYPE1) begin
-        if(mc_t1_alusel == 4'h2) begin //DAA
-            c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
+        if(mc_t0_deusel == 4'h2) begin //DAA
+            c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
         end
-        else if(mc_t1_alusel == 4'h7) begin //shift 
+        else if(mc_t0_deusel == 4'h7) begin //shift 
             c_comb = alu_shifter_co;
         end
-        else if(mc_t1_alusel == 4'hB) begin //INC
-            c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
+        else if(mc_t0_deusel == 4'hB) begin //INC
+            c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
         end
-        else if(mc_t1_alusel == 4'hC) begin //DEC
-            c_comb = data_w_nb ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
+        else if(mc_t0_deusel == 4'hC) begin //DEC
+            c_comb = deu_dsize ? alu_adder_word_co ^ alu_adder_borrow_mode : alu_adder_byte_co ^ alu_adder_borrow_mode;
         end
     end
     else if(mc_type == MCTYPE2) begin
-        if(mc_bk_carry_ctrl == 1'b1) c_comb = reg_OPCODE[0];
+        if(mc_t2_carry_ctrl == 1'b1) c_comb = reg_OPCODE[0];
     end
 end
 
@@ -2374,13 +2281,13 @@ always @(*) begin
         end
     end
     else if(mc_type == MCTYPE1) begin
-        if(mc_t1_alusel == 4'h2) begin //DAA
+        if(mc_t0_deusel == 4'h2) begin //DAA
             hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode;
         end
-        else if(mc_t1_alusel == 4'hB) begin //INC
+        else if(mc_t0_deusel == 4'hB) begin //INC
             hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode;
         end
-        else if(mc_t1_alusel == 4'hC) begin //DEC
+        else if(mc_t0_deusel == 4'hC) begin //DEC
             hc_comb = alu_adder_nibble_co ^ alu_adder_borrow_mode;
         end
     end
@@ -2440,22 +2347,22 @@ always @(*) begin
             end
         end
         else if(mc_type == MCTYPE1) begin
-            if(mc_t1_alusel == 4'h7) begin //shift 
+            if(mc_t0_deusel == 4'h7) begin //shift 
                 case(shift_code)
                     4'b0000: sk_comb = c_comb; //SLRC, skip condition: CARRY
                     4'b0100: sk_comb = c_comb; //SLLC, skip condition: CARRY
                     default: sk_comb = 1'b0;
                 endcase
             end
-            else if(mc_t1_alusel == 4'hB) begin //INC, skip condition: CARRY
+            else if(mc_t0_deusel == 4'hB) begin //INC, skip condition: CARRY
                 sk_comb = c_comb;
             end
-            else if(mc_t1_alusel == 4'hC) begin //DEC, skip condition: BORROW
+            else if(mc_t0_deusel == 4'hC) begin //DEC, skip condition: BORROW
                 sk_comb = c_comb;
             end
         end
         else if(mc_type == MCTYPE2) begin
-            case(mc_bk_skip_ctrl)
+            case(mc_t2_skip_ctrl)
                 3'b011: sk_comb = reg_MDH[reg_OPCODE[2:0]]; //BIT
                 3'b100: sk_comb = skip_flag;  //SK
                 3'b101: sk_comb = ~skip_flag; //SKN
@@ -2485,7 +2392,7 @@ always @(posedge emuclk) begin
                     else sk_temp <= sk_comb;
                 end
                 else begin
-                    if(mc_jump_to_next_inst) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
+                    if(mc_jmp_to_next_inst) begin flag_SK <= sk_comb; sk_temp <= sk_comb; end
                     else begin if(mc_end_of_instruction) flag_SK <= sk_temp; end
                 end
             end
@@ -2541,14 +2448,14 @@ end
 //by forcing the next_bus_acc as "RD4"
 always @(*) begin
     if(|{flag_SK, flag_L1, flag_L0} && !(softi_proc_cyc | hardi_proc_cyc)) begin
-        if(mc_jump_to_next_inst) mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
+        if(mc_jmp_to_next_inst) mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, RD4};
         else mc_ctrl_output = {16'b11_0_0_10000_0_0_000_0_0, mcrom_data[1:0]};
     end
     else begin
         mc_ctrl_output[17:2] = mcrom_data[17:2];
 
         //next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte
-        if(mc_type == MCTYPE3 && mc_s_cond_read) mc_ctrl_output[1:0] = (reg_OPCODE[0] & reg_OPCODE[1]) ? RD3 : mcrom_data[1:0];
+        if(mc_type == MCTYPE3 && mc_t3_cond_read) mc_ctrl_output[1:0] = (reg_OPCODE[0] & reg_OPCODE[1]) ? RD3 : mcrom_data[1:0];
         else mc_ctrl_output[1:0] = mcrom_data[1:0];
     end
 end

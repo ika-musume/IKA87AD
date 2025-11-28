@@ -60,7 +60,7 @@ wire            cpu_rd_n, cpu_wr_n;
 wire    [7:0]   cpu_do;
 reg     [7:0]   dbus;
 
-/*
+
 //test memory section
 reg     [7:0]   testmem[0:511];
 wire    [8:0]   testmem_addr = cpu_addr[8:0];
@@ -68,10 +68,10 @@ wire            testmem_cs_n = ~(cpu_addr < 16'hFF00);
 wire            testmem_rd_n = cpu_rd_n;
 reg     [7:0]   testmem_dout;
 initial $readmemh("IKA87AD_testmem.txt", testmem);
-always @(*) testmem_dout = testmem_cs_n || testmem_rd_n ? 8'hZZ : testmem[testmem_addr];
-*/
+always @(*) dbus = testmem_cs_n || testmem_rd_n ? 8'hZZ : testmem[testmem_addr];
 
 
+/*
 //bootloader section
 reg     [7:0]   bootloader[0:4095];
 wire    [11:0]  bootloader_addr = cpu_addr[11:0];
@@ -110,7 +110,7 @@ always @(*) begin
         else if(cpu_addr == 16'h1401) dbus = 8'hEE;
     end
 end
-
+*/
 
 IKA87AD u_dut (
     .i_EMUCLK                       (EMUCLK                     ),

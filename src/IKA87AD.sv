@@ -726,7 +726,7 @@ IKA87AD_microcode u_microcode (
         000: NOP
         001: reserved
         010: reserved
-        011: BIT
+        011: BTST_WA
         100: SK
         101: SKN
         110: SKIT
@@ -1175,7 +1175,7 @@ always @(posedge emuclk) begin
             else reg_PC <= next_pc;
 
             //Stack Pointer load condition
-            if(reg_SP_wr) reg_SP <= aeu_output;
+            if(reg_SP_wr) reg_SP <= deu_output;
 
             //Memory Address load/auto inc conditions
             if(reg_MA_wr) reg_MA <= aeu_ma_output;
@@ -1932,7 +1932,7 @@ always @(*) begin
             end
             T0_DEU_COMOP: begin
                 case(arith_code)
-                    DEU_OP_MOV: begin 
+                    DEU_OP_MOV:
                         deu_output = deu_pb;
                     DEU_OP_AND:
                         deu_output = deu_pa & deu_pb;
@@ -2265,7 +2265,7 @@ always @(*) begin
         end
         else if(mc_type == MCTYPE2)
             case(mc_t2_skip_ctrl)
-                3'b011 : sk_comb =  reg_MD[1][reg_OPCODE[2:0]]; //BIT
+                3'b011 : sk_comb =  reg_MD[1][reg_OPCODE[2:0]]; //BTST_WA
                 3'b100 : sk_comb =  skip_flag;   //SK
                 3'b101 : sk_comb = ~skip_flag;   //SKN
                 3'b110 : sk_comb =  iflag_muxed; //SKIT

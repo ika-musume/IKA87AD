@@ -16,7 +16,7 @@ always @(*) begin
     sa = NOP;
 
     if(opcode_page == 3'd0) begin
-             if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) sa = IRD;
+        unique if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) sa = IRD;
         else if( op[7:4] == 4'h6  &&  op[3:0] >  4'h7 ) sa = MVI_R_IM;
         else if( op[7:4] == 4'h3  &&  op[3:0] >  4'h8 ) sa = STAX_RPA_A;
         else if( op[7:4] == 4'h2  &&  op[3:0] >  4'h8 ) sa = LDAX_A_RPA;
@@ -66,7 +66,7 @@ always @(*) begin
                 (op[3:0] == 4'h8  ||  op[3:0] == 4'h9)) sa = RET_RETS;
         else if( op[7:4] <  4'h8  &&  op[3:0] == 4'h5 ) sa = ALUIW_WA_IM;
         else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h1 ) sa = JB;
-        else if( op[7:4] == 4'h5  &&  op[3:0] >  4'h7 ) sa = BIT;
+        else if( op[7:4] == 4'h5  &&  op[3:0] >  4'h7 ) sa = BTST_WA;
         else if((op[7:4] == 4'hA  ||  op[7:4] == 4'hB) &&
                 (op[3:0] == 4'hA))                      sa = EIDI;
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) sa = NOP;
@@ -91,9 +91,9 @@ always @(*) begin
         else if( op[7:4] == 4'h3  &&  op[3:0] == 4'hA ) sa = NEGA;
         else if( op[7:4] == 4'h2  &&
                 (op[3:0] == 4'hA  ||  op[3:0] == 4'hB)) sa = STC_CLC;
-        else if( op[7:4] <  4'h4  &&  op[3:0] <  4'h8 ) sa = BYTE_RS_R2;
+        else if( op[7:4] <  4'h4  &&  op[3:0] <  4'h8 ) sa = ROTSHFT_R2;
         else if((op[7:4] == 4'hA  ||  op[7:4] == 4'hB) &&
-                (op[3:0] <  4'h8))                      sa = WORD_RS_EA;
+                (op[3:0] <  4'h8))                      sa = ROTSHFT_EA;
         else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h8 ) sa = JEA;
         else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) sa = SK;
         else if( op[7:4] == 4'h1  &&  op[3:0] >  4'h7 ) sa = SKN;

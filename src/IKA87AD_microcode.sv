@@ -12,12 +12,26 @@ assign  o_MCROM_DATA = mc;
 
 always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
     case(i_MCROM_ADDR)
-        //1-cycle opcode group
-        NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
+        //                       MCTYPE   FLAG  SKIP
+        //Move an immediate data
+        MVI_R_IM        : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        MVI_R_IM+1      : mc <= {MCTYPE0, 1'b1, 1'b1, T0_SRC_MD, T0_DST_R, T0_DEU_MOV, RD4};            //R<-MD, RD4
 
-        //2-cycle opcode group
-        MVI_R_IM        : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};
-        MVI_R_IM+1      : mc <= {MCTYPE0, 1'b1, 1'b1, T0_SRC_MD, T0_DST_R, T0_DEU_MOV, RD4};
+        LXI_RP2_IM      : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        LXI_RP2_IM+1    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        LXI_RP2_IM+2    : mc <= {MCTYPE0, 1'b1, 1'b1, T0_SRC_MD, T0_DST_RP2, T0_DEU_MOV, RD4};          //rp2<-MD, RD4
+
+        //MVIX_RPA_IM     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        //MVIX_RPA_IM+1   : mc <= {MCTYPE0, 1'b0, 1'b1, SB_RPA, SA_DST_MA, 2'b00, WR3};                   //MA<-RPA, WR3
+        //MVIX_RPA_IM+2   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        //MVIW_WA_IM      : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
+        //MVIW_WA_IM+1    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        //MVIW_WA_IM+2    : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, WR3};             //MA<-Vwa, WR3
+        //MVIW_WA_IM+3    : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+
+        //no operation
+        NOP             : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};
 
 
         default         : mc <= {MCTYPE3, 1'b1, 1'b1, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};

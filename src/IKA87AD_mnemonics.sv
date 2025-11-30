@@ -83,10 +83,10 @@ localparam T0_DEU_INC       = 4'b0010;
 localparam T0_DEU_DEC       = 4'b0011;
 localparam T0_DEU_ROT       = 4'b0100;
 localparam T0_DEU_SHFT      = 4'b0101;
-localparam T0_DEU_DAA       = 4'b011?;
-localparam T0_DEU_MUL       = 4'b100?;
-localparam T0_DEU_DIV       = 4'b101?;
-localparam T0_DEU_COMOP     = 4'b11??;
+localparam T0_DEU_DAA       = 4'b0110;
+localparam T0_DEU_MUL       = 4'b1000;
+localparam T0_DEU_DIV       = 4'b1010;
+localparam T0_DEU_COMOP     = 4'b1100;
 /* -------------------------------- */
 localparam DEU_OP_MOV       = 4'h0;
 localparam DEU_OP_AND       = 4'h8;
@@ -186,6 +186,8 @@ localparam ALUI_A_IM        = 8'd048; //2,  43
 localparam ALUI_R_IM        = 8'd050; //2, 443
 localparam EALU_EA_R2       = 8'd052; //2, 443
 localparam DALU_EA_RP       = 8'd054; //2, 443
+localparam MUL              = 8'd056; //2, 4433333333
+localparam DIV              = 8'd058; //2, 4433333333_33333333_3
 //3-cycle opcode group
 localparam LXI_RP2_IM       = 8'd064; //3,  433
 localparam MVIX_RPA_IM      = 8'd068; //3,  433
@@ -204,8 +206,7 @@ localparam JMP              = 8'd106; //3,  433
 localparam JR               = 8'd110; //3,  433
 localparam RET_RETS         = 8'd114; //3,  433
 localparam POP              = 8'd118; //3,  433
-localparam MUL              = 8'd112; //3, 4433333333 (TBD)
-localparam DIV              = 8'd116; //3, 4433333333333333333 (TBD)
+
 //4-cycle opcode group
 localparam MVIW_WA_IM       = 8'd120; //4,  4333
 localparam MOV_MEM_R        = 8'd124; //4, 44333

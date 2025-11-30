@@ -548,18 +548,20 @@ always @(posedge emuclk) begin
     end
     else begin
         if(mcrom_read_tick) begin
-            if(mseq_state == RUNNING) begin
+            if(cycle_tick) begin
                 if(mc_next_bus_acc == RD4) begin
                     mseq_state <= WAIT_FOR_DECODING;
                     mseq_cntr <= mseq_cntr;
                 end
                 else begin
-                    if(!deu_muldiv_busy) mseq_cntr <= mseq_cntr_next;
+                    mseq_cntr <= mseq_cntr_next;
                 end
             end
             else begin
-                mseq_state <= RUNNING;
-                mseq_cntr <= mcrom_sa[2:0];
+                if(current_bus_acc == RD4 && mseq_state == WAIT_FOR_DECODING) begin
+                    mseq_state <= RUNNING;
+                    mseq_cntr <= mcrom_sa[2:0];
+                end
             end
         end
     end
@@ -571,7 +573,8 @@ always @(*) begin
         else mseq_cntr_next = mseq_cntr + 3'd1;
     end
     else begin
-        mseq_cntr_next = mseq_cntr + 3'd1;
+        if(!deu_muldiv_busy) mseq_cntr_next = mseq_cntr + 3'd1;
+        else mseq_cntr_next = mseq_cntr;
     end
 end
 
@@ -1198,8 +1201,8 @@ always @(*) begin
     else begin
         if(force_exec_hardi | force_exec_nop) next_pc = reg_PC;
         else begin
-            if(current_bus_acc == RD4 || current_bus_acc == RD3) 
-                if(mc_t3_cond_pc_dec) next_pc = reg_PC - 16'h0001;
+            if(current_bus_acc == RD4 || current_bus_acc == RD3)
+                if(mc_type == MCTYPE3 && mc_t3_cond_pc_dec) next_pc = reg_PC - 16'h0001;
                 else                  next_pc = reg_PC + 16'h0001;
             else next_pc = reg_PC;
         end
@@ -1253,7 +1256,7 @@ end
 always @(*) begin
          if(mc_type == MCTYPE0) gpr_WRBUS = deu_dsize ? deu_output : {2{deu_output[7:0]}};
     else if(mc_type == MCTYPE1) gpr_WRBUS = aeu_output;
-    else                        gpr_WRBUS = 16'h0000;
+    else                        gpr_WRBUS = deu_output;
 end
 
 
@@ -1798,32 +1801,26 @@ always @(posedge emuclk) begin
         deu_muldiv_cntr <= 5'd31;
         deu_muldiv_busy <= 1'b0;
     end
-    else begin
-        if(cycle_tick) begin
-            if(deu_mul_start) begin
-                if(deu_muldiv_cntr == 5'd31) begin
-                    deu_muldiv_cntr <= 5'd16;
-                    deu_muldiv_busy <= 1'b1;
-                end
+    else begin if(cycle_tick) begin
+        if(deu_muldiv_cntr == 5'd31) begin
+            unique if(deu_mul_start) begin
+                deu_muldiv_cntr <= 5'd16;
+                deu_muldiv_busy <= 1'b1;
             end
             else if(deu_div_start) begin
-                if(deu_muldiv_cntr == 5'd31) begin
-                    deu_muldiv_cntr <= 5'd0;
-                    deu_muldiv_busy <= 1'b1;
-                end
-            end
-            else begin
-                if(deu_muldiv_cntr != 5'd31) begin
-                    if(deu_muldiv_cntr == 5'd23 || deu_muldiv_cntr == 5'd15) begin
-                        deu_muldiv_cntr <= 5'd31;
-                        deu_muldiv_busy <= 1'b0;
-                    end
-                    else deu_muldiv_cntr <= deu_muldiv_cntr + 5'd1;
-                end
-                else deu_muldiv_cntr <= 5'd31;
+                deu_muldiv_cntr <= 5'd0;
+                deu_muldiv_busy <= 1'b1;
             end
         end
-    end
+        else begin
+                 if(deu_muldiv_cntr == 5'd15) deu_muldiv_busy <= 1'b0;
+            else if(deu_muldiv_cntr == 5'd22) deu_muldiv_busy <= 1'b0;
+
+                 if(deu_muldiv_cntr == 5'd15) deu_muldiv_cntr <= 5'd31;
+            else if(deu_muldiv_cntr == 5'd23) deu_muldiv_cntr <= 5'd31;
+            else                              deu_muldiv_cntr <= deu_muldiv_cntr + 5'd1;
+        end
+    end end
 end
 
 reg     [7:0]   deu_muldiv_r2_temp;
@@ -1846,12 +1843,13 @@ wire    [15:0]  deu_mul_op0 = {reg_EAH, reg_EAL};
 wire    [15:0]  deu_mul_op1 = deu_muldiv_r2_temp[deu_muldiv_cntr[2:0]] ? reg_AUX : 16'h0000;
 
 wire    [15:0]  deu_div_op0 = reg_AUX;
-wire    [15:0]  deu_div_op1 = {8'h00, deu_muldiv_r2_temp}; //subtract the op1
+wire    [15:0]  deu_div_op1 = ~{8'h00, deu_muldiv_r2_temp}; //subtract the op1
 
-wire    [31:0]  a = {reg_AUX, {reg_EAH, reg_EAL}};
-wire    [31:0]  b = {deu_add_out, {reg_EAH, reg_EAL}};
-wire    [31:0]  deu_div_out = deu_add_out[15] ? {a[30:0], 1'b0} : {b[30:0], 1'b1};
-wire    [7:0]   deu_div_rem = deu_add_out[15] ?    reg_AUX[7:0] : deu_add_out[7:0];
+wire    [31:0]  div_not_subtracted = {reg_AUX, {reg_EAH, reg_EAL}};
+wire    [31:0]  div_subtracted = {deu_add_out, {reg_EAH, reg_EAL}};
+wire    [31:0]  deu_div_next = deu_muldiv_cntr == 5'd31 ? {15'd0, {reg_EAH, reg_EAL}, 1'b0} :
+                                                          deu_add_wco ? {div_subtracted[30:0], 1'b1} : {div_not_subtracted[30:0], 1'b0};
+wire    [7:0]   deu_div_rem  = deu_add_wco ? deu_add_out[7:0] : reg_AUX[7:0];
 
 
 //Main ALU
@@ -1900,7 +1898,7 @@ always @(*) begin
             T0_DEU_SHFT: begin //bit shift and rotation
                 deu_output = deu_sh_out;
             end
-            T0_DEU_DAA: begin //decimal adjust
+            T0_DEU_DAA, 4'b011?: begin //decimal adjust
                 deu_output = deu_add_out;
                 deu_add_op0 = deu_pa; deu_add_ci = 1'b0;
                 if(flag_HC) begin
@@ -1918,19 +1916,21 @@ always @(*) begin
                     end
                 end
             end
-            T0_DEU_MUL: begin
+            T0_DEU_MUL, 4'b100?: begin
                 deu_output = deu_add_out;
                 deu_add_op0 = 16'd0; deu_add_op1 = 16'd0; deu_add_ci = 1'b0;  //reset EA
                 deu_mul_aux_wr = 1'b1;
                 deu_aux_output = {8'h00, reg_A};
             end
-            T0_DEU_DIV: begin
-                deu_output = {deu_pa[14:0], 1'b0};
-                deu_add_op0 = deu_pa; deu_add_op1 = 16'd0; deu_add_ci = 1'b0; //EA
+            T0_DEU_DIV, 4'b010?: begin
+                {deu_aux_output, deu_output} = deu_div_next;
+                deu_add_op0 = deu_div_op0;  //reg EA
+                deu_add_op1 = deu_div_op1;  //-r2
+                deu_add_ci = 1'b1;
+
                 deu_div_aux_wr = 1'b1;
-                deu_aux_output = {15'd0, deu_pa[15]};
             end
-            T0_DEU_COMOP: begin
+            T0_DEU_COMOP, 4'b11??: begin
                 case(arith_code)
                     DEU_OP_MOV:
                         deu_output = deu_pb;
@@ -1996,15 +1996,15 @@ always @(*) begin
             deu_muldiv_ea_wr = 1'b1;
         end
         else begin //divide
-            deu_output = deu_div_out[15:0];
+            deu_output = deu_div_next[15:0];
             deu_add_op0 = deu_div_op0;  //reg EA
-            deu_add_op1 = ~deu_div_op1; //-r2
+            deu_add_op1 = deu_div_op1;  //-r2
             deu_add_ci = 1'b1;
 
             deu_muldiv_ea_wr = 1'b1;
             deu_div_aux_wr = 1'b1; //alu_muldiv_cntr[3:0] == 4'd15 ? 1'b0 : 1'b1;
             
-            deu_aux_output = deu_muldiv_cntr[3:0] == 4'd15 ? {8'h00, deu_div_rem} : deu_div_out[31:16];
+            deu_aux_output = deu_muldiv_cntr[3:0] == 4'd15 ? {8'h00, deu_div_rem} : deu_div_next[31:16];
         end
     end
 end

@@ -711,12 +711,13 @@ IKA87AD_microcode u_microcode (
     D[14]: SKIP bit
     D[13]: reserved
     D[12:10]: address type select
-       000: IA(immediate address)
-       001: WA(WA offset)
-       100: SRNUM D[5:0]
-       101: SR2NUM {D[7],D[2:0]}
-       110: SR3NUM D[0]
-       111: SR4NUM D[0]
+        00X: NOP
+        010: IA(immediate address)
+        011: WA(WA offset)
+        100: SRNUM D[5:0]
+        101: SR2NUM {D[7],D[2:0]}
+        110: SR3NUM D[0]
+        111: SR4NUM D[0]
     D[9]: CARRY MOD
     D[8]: INTERRUPT E/D
     D[7:6]: EXCHANGE
@@ -1481,7 +1482,7 @@ always @(posedge emuclk) begin
         //reg_ADDR_SR <= 6'h3F;
     end
     else begin
-        if(cycle_tick) begin
+        unique if(cycle_tick) begin
             if(mc_end_of_instruction) begin
                 md_tos <= 2'd0;
                 addr_ia_we <= 2'b00;
@@ -1489,15 +1490,24 @@ always @(posedge emuclk) begin
                 addr_sr_we <= 1'b0;
             end
             else begin
-                if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd0) addr_ia_we <= 2'b11;
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel == T2_STA_IA) addr_ia_we <= 2'b11;
                 else addr_ia_we <= addr_ia_we >> 1;
 
-                if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd1) addr_wa_we <= 1'b1;
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel == T2_STA_WA) addr_wa_we <= 1'b1;
                 else addr_wa_we <= 1'b0;
 
-                if(mc_type == MCTYPE2 && mc_t2_atype_sel > 3'd3) addr_sr_we <= {1'b1, mc_t2_atype_sel[1:0]};
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel > 3'd3) addr_sr_we <= mc_t2_atype_sel;
                 else addr_sr_we[2] <= 1'b0;
             end
+
+            //special register address
+            case(addr_sr_we)
+                3'b100 : reg_ADDR_SR <= reg_MD[0][5:0];
+                3'b101 : reg_ADDR_SR <= {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
+                3'b110 : reg_ADDR_SR <= {5'b11000, reg_OPCODE[0]};
+                3'b111 : reg_ADDR_SR <= {5'b11001, reg_OPCODE[0]};
+                default: reg_ADDR_SR <= reg_ADDR_SR;
+            endcase
         end
         else if(md_outlatch_tick) begin
             //all MD registers are working individually
@@ -1527,16 +1537,8 @@ always @(posedge emuclk) begin
 
             //WA address
             if(addr_wa_we) reg_ADDR_WA <= i_DI;
-
-            //special register address
-            if(addr_sr_we[2])
-                case(addr_sr_we[1:0])
-                    2'd0: reg_ADDR_SR <= reg_MD[0][5:0];
-                    2'd1: reg_ADDR_SR <= {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
-                    2'd2: reg_ADDR_SR <= {5'b11000, reg_OPCODE[0]};
-                    2'd3: reg_ADDR_SR <= {5'b11001, reg_OPCODE[0]};
-                endcase
         end
+        else ; //make sure the unique-if statement convers all possible conditions
     end
 end
 
@@ -1811,6 +1813,7 @@ always @(posedge emuclk) begin
                 deu_muldiv_cntr <= 5'd0;
                 deu_muldiv_busy <= 1'b1;
             end
+            else ; //make sure the unique-if statement covers all possible conditions
         end
         else begin
                  if(deu_muldiv_cntr == 5'd15) deu_muldiv_busy <= 1'b0;
@@ -1924,9 +1927,9 @@ always @(*) begin
             end
             T0_DEU_DIV, 4'b010?: begin
                 {deu_aux_output, deu_output} = deu_div_next;
-                deu_add_op0 = deu_div_op0;  //reg EA
-                deu_add_op1 = deu_div_op1;  //-r2
-                deu_add_ci = 1'b1;
+                deu_add_op0 = deu_div_op0; //reg EA
+                deu_add_op1 = deu_div_op1; //-r2
+                deu_add_ci = 1'b1; //-r2
 
                 deu_div_aux_wr = 1'b1;
             end
@@ -2042,11 +2045,9 @@ always @(*) begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_add_out;
             aeu_add_op0 = aeu_pa; 
-            case(reg_OPCODE[2:0])
-                3'b100 : aeu_add_op1 = 16'h0001;
-                3'b101 : aeu_add_op1 = 16'h0001;
-                3'b110 : aeu_add_op1 = 16'hFFFF;
-                3'b111 : aeu_add_op1 = 16'hFFFF;
+            casez(reg_OPCODE[2:0])
+                3'b?0? : aeu_add_op1 = 16'h0001;
+                3'b?1? : aeu_add_op1 = 16'hFFFF;
                 default: aeu_add_op1 = 16'h0000;
             endcase
         end
@@ -2054,11 +2055,9 @@ always @(*) begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_add_out;
             aeu_add_op0 = aeu_pa; 
-            case(reg_OPCODE[2:0])
-                3'b100 : aeu_add_op1 = 16'h0002;
-                3'b101 : aeu_add_op1 = 16'h0002;
-                3'b110 : aeu_add_op1 = 16'hFFFE; //not specified, (-2?)
-                3'b111 : aeu_add_op1 = 16'hFFFE; //not specified, (-2?)
+            casez(reg_OPCODE[2:0])
+                3'b?0? : aeu_add_op1 = 16'h0002;
+                3'b?1? : aeu_add_op1 = 16'hFFFE; //not specified, (-2?)
                 default: aeu_add_op1 = 16'h0000;
             endcase
         end
@@ -2265,7 +2264,7 @@ always @(*) begin
         end
         else if(mc_type == MCTYPE2)
             case(mc_t2_skip_ctrl)
-                3'b011 : sk_comb =  reg_MD[1][reg_OPCODE[2:0]]; //BTST_WA
+                3'b011 : sk_comb =  reg_MD[0][reg_OPCODE[2:0]]; //BTST_WA
                 3'b100 : sk_comb =  skip_flag;   //SK
                 3'b101 : sk_comb = ~skip_flag;   //SKN
                 3'b110 : sk_comb =  iflag_muxed; //SKIT

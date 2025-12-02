@@ -58,17 +58,43 @@ end
 wire    [15:0]  cpu_addr;
 wire            cpu_rd_n, cpu_wr_n;
 wire    [7:0]   cpu_do;
-reg     [7:0]   dbus;
+tri     [7:0]   dbus;
+assign dbus = (cpu_addr == 16'hFFF0) ? 8'hAD : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF1) ? 8'hDE : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF2) ? 8'hEF : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF3) ? 8'hBE : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF4) ? 8'h74 : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF5) ? 8'h69 : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF6) ? 8'h71 : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF7) ? 8'h4E : 8'hZZ;
+
+assign dbus = (cpu_addr == 16'h6974) ? 8'hEE : 8'hZZ;
+assign dbus = (cpu_addr == 16'h6975) ? 8'hEE : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E71) ? 8'hCC : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E72) ? 8'hCC : 8'hZZ;
+
+assign dbus = (cpu_addr == 16'h6977) ? 8'h77 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h6978) ? 8'h77 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E73) ? 8'h44 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E74) ? 8'h44 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4F2F) ? 8'h00 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4F30) ? 8'h02 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E76) ? 8'h01 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E77) ? 8'h23 : 8'hZZ;
+
 
 
 //test memory section
 reg     [7:0]   testmem[0:511];
 wire    [8:0]   testmem_addr = cpu_addr[8:0];
-wire            testmem_cs_n = ~(cpu_addr < 16'hFF00);
-wire            testmem_rd_n = cpu_rd_n;
+wire            testmem_cs = cpu_addr < 16'h0100;
+wire            testmem_rd = ~cpu_rd_n;
 reg     [7:0]   testmem_dout;
 initial $readmemh("IKA87AD_testmem.txt", testmem);
-always @(*) dbus = testmem_cs_n || testmem_rd_n ? 8'hZZ : testmem[testmem_addr];
+assign dbus = (testmem_cs & testmem_rd) ? testmem[testmem_addr] : 8'hZZ;
+
+
+//always @(*) dbus = cpu_addr == 16'hFFFF ? 8'hDE : 8'hZZ;
 
 
 /*

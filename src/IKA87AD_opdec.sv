@@ -51,7 +51,6 @@ always @(*) begin
         else if( op[7:4] == 4'h1  &&  op[3:0] >  4'h7 ) sa = MOV_R1_A;
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h1 ) sa = LDAW;
         else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) sa = MOV_A_R1;
-        else if( op[7:4] == 4'h0  &&  op[3:0] >  4'h7 ) sa = MOV_A_R1;
         else if( op[7:4] == 4'h4  &&
                 (op[3:0] >  4'h0  &&  op[3:0] <  4'h4)) sa = INR;
         else if( op[7:4] == 4'h5  &&

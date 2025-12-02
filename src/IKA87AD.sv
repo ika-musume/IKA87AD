@@ -155,7 +155,6 @@ wire    [2:0]   mc_t2_skip_ctrl     = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
 wire            mc_t3_cond_pc_dec   = mc_ctrl_output[8];
-wire            mc_t3_cond_read     = mc_ctrl_output[7];
 wire    [2:0]   mc_t3_bra_on_alu    = mc_ctrl_output[6:4];
 wire            mc_t3_swap_md_out   = mc_ctrl_output[3];
 wire            mc_t3_ird           = mc_ctrl_output[2];
@@ -711,9 +710,10 @@ IKA87AD_microcode u_microcode (
     D[14]: SKIP bit
     D[13]: reserved
     D[12:10]: address type select
-        00X: NOP
-        010: IA(immediate address)
-        011: WA(WA offset)
+        000: NOP
+        001: IA(immediate address)
+        010: WA(WA offset)
+        011: OFF(rpa offset)
         100: SRNUM D[5:0]
         101: SR2NUM {D[7],D[2:0]}
         110: SR3NUM D[0]
@@ -742,13 +742,13 @@ IKA87AD_microcode u_microcode (
         11: 4-state read
 
     3. SPECIAL OPERATION
-    11_X_X_-----_X_X_XXX_-_X_XX
+    11_X_X_-----_X_-_XXX_-_X_XX
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
     D[13:9]: reserved
     D[8]: conditional PC decrement(BLOCK)
-    D[7]: conditional read(rpa+byte or register)
+    D[7]: reserved
     D[6:4]: conditional branch on ALU type, branch+ steps
     D[3]: reserved
     D[2]: 1st cycle of 2-byte instruction
@@ -1179,7 +1179,7 @@ always @(posedge emuclk) begin
             else reg_PC <= next_pc;
 
             //Stack Pointer load condition
-            if(reg_SP_wr) reg_SP <= deu_output;
+            if(reg_SP_wr) reg_SP <= mc_type == MCTYPE1 ? aeu_output : deu_output;
 
             //Memory Address load/auto inc conditions
             if(reg_MA_wr) reg_MA <= aeu_ma_output;
@@ -1214,9 +1214,10 @@ end
 logic   [7:0]   reg_MD[0:3]; //memory data
 always_comb reg_MD[3] = 8'h00; //unused address
 
-reg     [15:0]  reg_AUX;     //DEU DIV aux
-reg     [15:0]  reg_ADDR_IM; //immediate address from the bus
-reg     [7:0]   reg_ADDR_WA; //WA from the bus
+reg     [15:0]  reg_AUX;        //DEU DIV aux
+reg     [15:0]  reg_ADDR_IM;    //immediate address from the bus
+reg     [7:0]   reg_ADDR_WA;    //WA from the bus
+reg     [7:0]   reg_ADDR_RIO;   //rpa immediate offset
 
 //Processor Status Word flags
 reg             flag_Z, flag_SK, flag_C, flag_HC, flag_L1, flag_L0;
@@ -1335,23 +1336,23 @@ always @(posedge emuclk) if(cycle_tick) begin
     if(reg_SRTMP_wr) reg_SRTMP <= deu_output;
     else
         case(reg_ADDR_SR) 
-            6'h00: reg_SRTMP <= i_PA_I;
-            6'h01: reg_SRTMP <= i_PB_I;
-            6'h02: reg_SRTMP <= i_PC_I;
-            6'h03: reg_SRTMP <= i_PD_I; 
-            6'h05: reg_SRTMP <= i_PF_I;
-            6'h08: reg_SRTMP <= {3'b000, spr_ANM};
-            //6'h09: reg_SRTMP <= spr_SMH;
-            6'h0B: reg_SRTMP <= spr_EOM;
-            6'h0D: reg_SRTMP <= spr_TMM;
-            6'h19: reg_SRTMP <= 8'h00; //RxB, not implemented
-            6'h20: reg_SRTMP <= spr_CR[0];
-            6'h21: reg_SRTMP <= spr_CR[1];
-            6'h22: reg_SRTMP <= spr_CR[2];
-            6'h23: reg_SRTMP <= spr_CR[3];
-            6'h32: reg_SRTMP <= 8'h00; //ECNT, not yet implemented
-            6'h33: reg_SRTMP <= 8'h00; //ECPT, not yet implemented
-            default: reg_SRTMP <= 8'h00;
+            6'h00: reg_SRTMP <= {8'h00, i_PA_I};
+            6'h01: reg_SRTMP <= {8'h00, i_PB_I};
+            6'h02: reg_SRTMP <= {8'h00, i_PC_I};
+            6'h03: reg_SRTMP <= {8'h00, i_PD_I}; 
+            6'h05: reg_SRTMP <= {8'h00, i_PF_I};
+            6'h08: reg_SRTMP <= {8'h00, {3'b000, spr_ANM}};
+            //6'h09: reg_SRTMP <= {8'h00, spr_SMH};
+            6'h0B: reg_SRTMP <= {8'h00, spr_EOM};
+            6'h0D: reg_SRTMP <= {8'h00, spr_TMM};
+            6'h19: reg_SRTMP <= {8'h00, 8'h00}; //RxB, not implemented
+            6'h20: reg_SRTMP <= {8'h00, spr_CR[0]};
+            6'h21: reg_SRTMP <= {8'h00, spr_CR[1]};
+            6'h22: reg_SRTMP <= {8'h00, spr_CR[2]};
+            6'h23: reg_SRTMP <= {8'h00, spr_CR[3]};
+            6'h32: reg_SRTMP <= 16'hDEAD; //ECNT, not yet implemented
+            6'h33: reg_SRTMP <= 16'hBEEF; //ECPT, not yet implemented
+            default: reg_SRTMP <= 16'h0000;
         endcase
 end
 
@@ -1465,6 +1466,7 @@ end
 reg     [1:0]   md_tos; //top of the stack
 reg     [1:0]   addr_ia_we; //immediate address latching sequence
 reg             addr_wa_we; //WA address write enable
+reg             addr_rio_we; //rpa offset write enable
 reg     [2:0]   addr_sr_we; //special register address write enable
 
 always @(posedge emuclk) begin
@@ -1472,6 +1474,7 @@ always @(posedge emuclk) begin
         md_tos <= 2'd0;
         addr_ia_we <= 2'b00;
         addr_wa_we <= 1'b0;
+        addr_rio_we <= 1'b0;
         addr_sr_we <= 3'b000;
 
         //reg_MD[0] <= 8'h00;
@@ -1487,27 +1490,44 @@ always @(posedge emuclk) begin
                 md_tos <= 2'd0;
                 addr_ia_we <= 2'b00;
                 addr_wa_we <= 1'b0;
+                addr_rio_we <= 1'b0;
                 addr_sr_we <= 1'b0;
             end
             else begin
-                if(mc_type == MCTYPE2 && mc_t2_atype_sel == T2_STA_IA) addr_ia_we <= 2'b11;
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd1) addr_ia_we <= 2'b11;
                 else addr_ia_we <= addr_ia_we >> 1;
 
-                if(mc_type == MCTYPE2 && mc_t2_atype_sel == T2_STA_WA) addr_wa_we <= 1'b1;
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd2) addr_wa_we <= 1'b1;
                 else addr_wa_we <= 1'b0;
 
-                if(mc_type == MCTYPE2 && mc_t2_atype_sel > 3'd3) addr_sr_we <= mc_t2_atype_sel;
-                else addr_sr_we[2] <= 1'b0;
-            end
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd3) addr_rio_we <= 1'b1;
+                else addr_rio_we <= 1'b0;
 
-            //special register address
-            case(addr_sr_we)
-                3'b100 : reg_ADDR_SR <= reg_MD[0][5:0];
-                3'b101 : reg_ADDR_SR <= {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
-                3'b110 : reg_ADDR_SR <= {5'b11000, reg_OPCODE[0]};
-                3'b111 : reg_ADDR_SR <= {5'b11001, reg_OPCODE[0]};
-                default: reg_ADDR_SR <= reg_ADDR_SR;
-            endcase
+                if(mc_type == MCTYPE2 && mc_t2_atype_sel > 3'd3)
+                    //special register address
+                    case(mc_t2_atype_sel[1:0])
+                        2'b00 : reg_ADDR_SR <= reg_MD[0][5:0];
+                        2'b01 : reg_ADDR_SR <= {2'b00, reg_OPCODE[7], reg_OPCODE[2:0]};
+                        2'b10 : reg_ADDR_SR <= {5'b11000, reg_OPCODE[0]};
+                        2'b11 : reg_ADDR_SR <= {5'b11001, reg_OPCODE[0]};
+                    endcase
+                else addr_sr_we[2] <= 1'b0;
+                
+                if(current_bus_acc != WR3) begin
+                    //all MD registers are working individually
+                    if(reg_MD2_wr) reg_MD[2] <= reg_PSW;
+                    if(reg_MD1_wr) reg_MD[1] <= deu_dsize ? deu_output[15:8] : deu_output[7:0];
+                    if(reg_MD0_wr) reg_MD[0] <= deu_output[7:0];
+
+                    //give it a priority
+                         if(reg_MD2_wr) md_tos <= 2'd3;
+                    else if(reg_MD1_wr) md_tos <= 2'd2;
+                    else if(reg_MD0_wr) md_tos <= 2'd1;
+                end
+                else begin
+                    md_tos <= md_tos - 2'd1;
+                end
+            end
         end
         else if(md_outlatch_tick) begin
             //all MD registers are working individually
@@ -1519,11 +1539,10 @@ always @(posedge emuclk) begin
                  if(reg_MD2_wr) md_tos <= 2'd3;
             else if(reg_MD1_wr) md_tos <= 2'd2;
             else if(reg_MD0_wr) md_tos <= 2'd1;
-            else                md_tos <= md_tos - 2'd1;
         end
         else if(md_inlatch_tick) begin
             //latch the bus data only when the current data type is NOT specified
-            if(~|{addr_ia_we, addr_wa_we, addr_sr_we[2]})
+            if(~|{addr_ia_we, addr_wa_we, addr_rio_we, addr_sr_we[2]})
                 case(md_tos)
                     2'd0: begin reg_MD[0] <= i_DI; md_tos <= md_tos + 2'd1; end
                     2'd1: begin reg_MD[1] <= i_DI; md_tos <= md_tos + 2'd1; end
@@ -1537,6 +1556,8 @@ always @(posedge emuclk) begin
 
             //WA address
             if(addr_wa_we) reg_ADDR_WA <= i_DI;
+
+            if(addr_rio_we) reg_ADDR_RIO <= i_DI;
         end
         else ; //make sure the unique-if statement convers all possible conditions
     end
@@ -1692,11 +1713,11 @@ reg     [15:0]   rpa2_offset;
 always @(*) begin
     //rpa2 addend select
     case(reg_OPCODE[2:0])
-        3'b011: rpa2_offset = {8'h00, reg_MD[0]};
+        3'b011: rpa2_offset = {8'h00, reg_ADDR_RIO};
         3'b100: rpa2_offset = gpr_RDBUS;
         3'b101: rpa2_offset = gpr_RDBUS;
         3'b110: rpa2_offset = gpr_RDBUS;
-        3'b111: rpa2_offset = {8'h00, reg_MD[0]};
+        3'b111: rpa2_offset = {8'h00, reg_ADDR_RIO};
         default: rpa2_offset =  gpr_RDBUS; //not specified
     endcase
 end
@@ -2035,6 +2056,7 @@ always @(*) begin
     casez(mc_t1_aeu_op)
         T1_AEU_MOV: begin //move, FA PORT B -> out
             aeu_output = aeu_pb;
+            aeu_ma_output = aeu_pb;
         end
         T1_AEU_ADD: begin
             aeu_output = aeu_add_out;
@@ -2045,9 +2067,9 @@ always @(*) begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_add_out;
             aeu_add_op0 = aeu_pa; 
-            casez(reg_OPCODE[2:0])
-                3'b?0? : aeu_add_op1 = 16'h0001;
-                3'b?1? : aeu_add_op1 = 16'hFFFF;
+            casez(reg_OPCODE[2:1])
+                2'b10 : aeu_add_op1 = 16'h0001;
+                2'b11 : aeu_add_op1 = 16'hFFFF;
                 default: aeu_add_op1 = 16'h0000;
             endcase
         end
@@ -2055,9 +2077,9 @@ always @(*) begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_add_out;
             aeu_add_op0 = aeu_pa; 
-            casez(reg_OPCODE[2:0])
-                3'b?0? : aeu_add_op1 = 16'h0002;
-                3'b?1? : aeu_add_op1 = 16'hFFFE; //not specified, (-2?)
+            casez(reg_OPCODE[2:1])
+                2'b10  : aeu_add_op1 = 16'h0002;
+                2'b11  : aeu_add_op1 = 16'hFFFE; //not specified, (-2?)
                 default: aeu_add_op1 = 16'h0000;
             endcase
         end
@@ -2071,6 +2093,18 @@ always @(*) begin
             aeu_ma_output = aeu_pb;
             aeu_add_op0 = 16'h0001; aeu_add_op1 = aeu_pb;
         end 
+        T1_AEU_DINC: begin
+            aeu_output = aeu_add_out;
+            aeu_ma_output = aeu_add_out;
+            aeu_add_op0 = aeu_pa; 
+            aeu_add_op1 = 16'h0002; //double increment
+        end
+        T1_AEU_DEC: begin
+            aeu_output = aeu_add_out;
+            aeu_ma_output = aeu_add_out;
+            aeu_add_op0 = aeu_pa; 
+            aeu_add_op1 = 16'hFFFF; //double increment
+        end
     endcase
 end
 
@@ -2342,7 +2376,7 @@ always @(*) begin
         //stop the microsequencer during mul/div calculation
         if(deu_muldiv_busy) mc_ctrl_output = {16'b11_0_0_00000_0_0_000_0_0, IDLE};
         //next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte
-        else if(mc_type == MCTYPE3 && mc_t3_cond_read) mc_ctrl_output[1:0] = (reg_OPCODE[0] & reg_OPCODE[1]) ? RD3 : mcrom_data[1:0];
+        else if(mc_type == MCTYPE2 && mc_t2_atype_sel == 3'd3) mc_ctrl_output[1:0] = (reg_OPCODE[0] & reg_OPCODE[1]) ? RD3 : mcrom_data[1:0];
     end
 end
 

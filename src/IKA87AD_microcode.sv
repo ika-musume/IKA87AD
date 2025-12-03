@@ -136,30 +136,61 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         TABLE+1         : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_MA, T1_DST_MA, T1_AEU_DINC, RD3};          //MA<-MA+2, IDLE
         TABLE+2         : mc <= {MCTYPE2, 1'b0, 1'b0, T2_NOP, RD3};                                     //nop, RD3
         TABLE+3         : mc <= {MCTYPE0, 1'b0, 1'b0, T0_SRC_MD, T0_DST_BC, T0_DEU_MOV, RD4};           //BC<-MD, RD4
-
         
         /*
             8-bit register-accumulator arithmetic instructions
+            (add, adc, addnc, sub, subnc, ana, ora, xra, gta, lta, nea, eqa, ona, offa)
         */
+        //ALU_A_R         : mc <= {MCTYPE0, 1'b1, 1'b1, SB_R, SA_DST_A, 2'b10, RD4};                      //A<-A(op)R, RD4
+        //ALU_R_A         : mc <= {MCTYPE0, 1'b1, 1'b1, SB_A, SA_DST_R, 2'b10, RD4};                      //R<-R(op)A, RD4
 
         /*
             8-bit memory-accumulator arithmetic instructions
+            (addx, adcx, addncx, subx, sbbx, subncx, anax, orax, xrax, gtax, ltax, neax, eqax, onax, offax)
         */
+        //ALUX_A_RPA      : mc <= {MCTYPE1, 1'b0, 1'b1, SD_RPA, SC_DST_MA, 4'b1010, RD3};                 //MA<-RPA
+        //ALUX_A_RPA+1    : mc <= {MCTYPE0, 1'b1, 1'b0, SB_MD, SA_DST_A, 2'b10, RD4};                     //A<-MD
         
         /*
             8-bit immediate-register arithmetic instructions
+            (adi, aci, adinc, sui, sbi, suinb, ani, ori, xri, gti, lti, nei, eqi, oni, offi)
         */
+        //ALUI_A_IM       : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
+        //ALUI_A_IM+1     : mc <= {MCTYPE0, 1'b1, 1'b1, SB_MD, SA_DST_A, 2'b11, RD4};                     //A<-MD
+
+        //ALUI_R_IM       : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop,// RD3
+        //ALUI_R_IM+1     : mc <= {MCTYPE0, 1'b1, 1'b1, SB_MD, SA_DST_R, 2'b10, RD4};                     //R<-M//D
+
+        //ALUI_SR2_IM     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3(data, low)
+        //ALUI_SR2_IM+1   : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b00000, 1'b0, 1'b0, 3'b001, 1'b0, 1'b0, IDLE};  //branch+2, IDLE
+        //ALUI_SR2_IM+2   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop*2, IDLE
+        //ALUI_SR2_IM+3   : mc <= {MCTYPE0, 1'b1, 1'b0, SB_MD, SA_DST_SR2, 2'b10, RD4};                   //SR2<-SR2(op)MD, RD4
 
         /*
             8-bit working register arithmetic instructions
+            (aniw, oriw(19 cyc) / gti, lti, oni, offi, eqi, nei(13 cyc))
         */
+        //ALUIW_WA_IM     : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3(Vwa addr, low)
+        //ALUIW_WA_IM+1   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b100, 1'b0, 1'b0, RD3};   //branch+5, RD3(im, high)
+        //ALUIW_WA_IM+2   : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3(Vwa data, low)
+        //ALUIW_WA_IM+3   : mc <= {MCTYPE0, 1'b1, 1'b0, SB_MDH, SA_DST_MDL, 2'b11, IDLE};                 //MDL<-MDL(op)MDH, IDLE
+        //ALUIW_WA_IM+4   : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
+        //ALUIW_WA_IM+5   : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+        //ALUIW_WA_IM+6   : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3(Vwa data, low)
+        //ALUIW_WA_IM+7   : mc <= {MCTYPE0, 1'b1, 1'b0, SB_MDH, SA_DST_MDL, 2'b11, RD4};                  //MDL<-MDL(op)MDH, RD4
 
         /*
             16-bit register-accumulator arithmetic instructions
+            (eadd, esub / dadd, dadc, daddnc, dsub, dsbb, dsubnb, dan, dor, dxr, dgt, dlt, dne, deq, don, doff)
         */
+        //EALU_EA_R2      : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
+        //EALU_EA_R2+1    : mc <= {MCTYPE0, 1'b1, 1'b0, SB_R2, SA_DST_EA, 2'b10, RD4};                    //EA<-EA(op)R2
+
+        //DALU_EA_RP      : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop, IDLE
+        //DALU_EA_RP+1    : mc <= {MCTYPE0, 1'b1, 1'b0, SB_RP, SA_DST_EA, 2'b10, RD4};                    //EA<-EA(op)RP
 
         /*
-            16-bit multiplication/division instructions
+            Multiplication/division instructions
         */
         MUL             : mc <= {MCTYPE0, 1'b0, 1'b1, T0_SRC_R2, T0_DST_EA, T0_DEU_MUL, IDLE};          //EA<-A*r2, IDLE
         MUL+1           : mc <= {MCTYPE2, 1'b0, 1'b0, T2_NOP, RD4};                                     //nop, RD4
@@ -167,8 +198,52 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         DIV             : mc <= {MCTYPE0, 1'b0, 1'b1, T0_SRC_R2, T0_DST_EA, T0_DEU_DIV, IDLE};          //EA<-EA/r2, IDLE
         DIV+1           : mc <= {MCTYPE0, 1'b0, 1'b0, T0_SRC_AUX, T0_DST_R2, T0_DEU_MOV, RD4};          //r2<-AUX, RD4
 
-        IRD             : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b1, RD4};   //wait for decoding
+        /*
+            Increment/decrement instructions
+        */
+        //INR             : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_R2, 4'b1011, RD4};            //r2<-r2+1, IDLE
+        //INRW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
+        //INRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
+        //INRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_NOSOURCE, SC_DST_MDH, 4'b1011, IDLE};          //MDH<-MDH+1, IDLE
+        //INRW+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
+        //INRW+4          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+        //INX_RP2         : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADD1, SA_DST_MA, 2'b01, IDLE};                 //MA<-MA+1, IDLE(stop PC increment)
+        //INX_RP2+1       : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD1, SA_DST_RP2, 2'b01, RD4};                 //RP2<-RP2+1
+        //INX_EA          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADD1, SA_DST_MA, 2'b01, IDLE};                 //MA<-MA+1, IDLE(stop PC increment)
+        //INX_EA+1        : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD1, SA_DST_EA, 2'b01, RD4};                  //EA<-EA+1
+        //DCR             : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_R2, 4'b1100, RD4};            //r2<-r2-1, IDLE
+        //DCRW            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b1, 1'b0, RD3};   //swap MD output order, RD3
+        //DCRW+1          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADDR_V_WA, SA_DST_MA, 2'b00, RD3};             //MA<-Vwa, RD3
+        //DCRW+2          : mc <= {MCTYPE1, 1'b1, 1'b0, SD_NOSOURCE, SC_DST_MDH, 4'b1100, IDLE};          //MDH<-MDH-1, IDLE
+        //DCRW+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_MA, 2'b01, WR3};                  //MA<-MA-1, WR3
+        //DCRW+4          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD4};   //nop, RD4
+        //DCX_RP2         : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADD1, SA_DST_MA, 2'b01, IDLE};                 //MA<-MA+1, IDLE(stop PC increment)
+        //DCX_RP2+1       : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_RP2, 2'b01, RD4};                 //RP2<-RP2-1
+        //DCX_EA          : mc <= {MCTYPE0, 1'b0, 1'b1, SB_ADD1, SA_DST_MA, 2'b01, IDLE};                 //MA<-MA+1, IDLE(stop PC increment)
+        //DCX_EA+1        : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_EA, 2'b01, RD4};                  //EA<-EA-1
+        
 
+        /*
+            Shift/rotation instructions
+        */
+        //ROTSHFT_R2      : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_R2, 4'b0111, RD4};            //byte rot/shft, RD4
+        //ROTSHFT_EA      : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_EA, 4'b0111, RD4};            //word rot/shft, RD4
+
+        /*
+            Misc arithmetic instructions
+        */
+        //DAA             : mc <= {MCTYPE1, 1'b1, 1'b1, SD_NOSOURCE, SC_DST_A, 4'b0010, RD4};             //A<-(op)A, IDLE
+        //NEGA            : mc <= {MCTYPE1, 1'b0, 1'b1, SD_NOSOURCE, SC_DST_A, 4'b0001, RD4};             //A<-negative A, RD4
+        //STC_CLC         : mc <= {MCTYPE2, 1'b1, 1'b1, 4'b0000, 1'b1, 1'b0, 2'b00, 1'b0, 3'b000, RD4};   //carry mod
+
+        /*
+            Jump/call/return instructions
+        */
+        
+        /*
+            Processor control instructions
+        */
+        IRD             : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b00000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b1, RD4};   //wait for decoding
         NOP             : mc <= {MCTYPE2, 1'b1, 1'b1, T2_NOP, RD4};                                     //nop, RD4
 
         default         : mc <= {MCTYPE2, 1'b1, 1'b1, T2_NOP, RD4};                                     //nop, RD4

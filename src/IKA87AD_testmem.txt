@@ -1,1 +1,28 @@
-68 EE 00 00 00 00 00 00 00 00
+70 0F F0 FF 70 1F F2 FF 70 2F F4 FF 70 3F F6 FF 70 4F 59 82 69 16 //SP=DEAD BC=BEEF DE=6974 HL=4E71 EA=8259 A=16
+
+//test alu operations
+//60 C2 60 C3 //A<-A+B, A<-A+C ADD
+//60 D2 60 D3 //A<-A+B, A<-A+C ADC
+//60 E7 60 E6 //A<-A-L, A<-A-H SUB
+//60 F2 60 F3 //A<-A-B, A<-A-C SBB
+//60 8A 60 8B //A<-A and B/C
+//60 9A 60 9B //A<-A or B/C
+//60 91 //A<-A^A
+//69 74 //A=74
+//68 00 //V=00
+//60 AC 60 AC //GT regD
+//60 BB 60 BB //LT regC
+//60 EA 60 EA //NE regB
+//60 FD 60 FD //EQ regE
+//60 D8 60 D8 //OFFA
+//68 FF //V=FF
+//60 C8 60 C8 //ONA
+
+//test increment/decrement
+//41 42 43
+//51 52 53
+//A7 //EA<-HL
+//A8 A9 //INX EA DCX EA
+//12 22 13 23//INX BC DE, DCX BC DE
+//68 FF //V=FF
+//20 F0 30 F1

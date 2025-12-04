@@ -69,6 +69,7 @@ always @(*) begin
         else if((op[7:4] == 4'hA  ||  op[7:4] == 4'hB) &&
                 (op[3:0] == 4'hA))                      sa = EIDI;
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) sa = NOP;
+        //else                                            sa = NOP;
     end
     else if(opcode_page == 3'd1) begin
              if((op[7:4] == 4'h3  ||  op[7:4] == 4'hB) &&

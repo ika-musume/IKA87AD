@@ -1238,7 +1238,7 @@ always @(*) begin
         5'b001_0_0: gpr_RDBUS = {8'h00, reg_B};
         5'b001_0_1: gpr_RDBUS = {8'h00, reg_C};
         5'b001_1_?: gpr_RDBUS = {reg_B, reg_C};
-        5'b010_0_0: gpr_RDBUS = {8'h00, reg_V};
+        5'b010_0_0: gpr_RDBUS = {8'h00, reg_D};
         5'b010_0_1: gpr_RDBUS = {8'h00, reg_E};
         5'b010_1_?: gpr_RDBUS = {reg_D, reg_E};
         5'b011_0_0: gpr_RDBUS = {8'h00, reg_H};
@@ -1682,7 +1682,7 @@ always @(*) begin
         T0_SRC_RP1    : deu_pb = gpr_RDBUS; //reg_RP1;
         T0_SRC_SRTMP  : deu_pb = reg_SRTMP;
         T0_SRC_MD     : deu_pb = {reg_MD[1], reg_MD[0]};
-        T0_SRC_MD0    : deu_pb = reg_MD[0];
+        T0_SRC_MD0    : deu_pb = {8'h00, reg_MD[0]};
         T0_SRC_A      : deu_pb = {8'h00, reg_A};
         T0_SRC_EA     : deu_pb = {reg_EAH, reg_EAL};
         T0_SRC_AUX    : deu_pb = reg_AUX;
@@ -1698,8 +1698,8 @@ always @(*) begin
         T0_DST_RP1    : deu_pa = gpr_RDBUS; //reg_RP1;
         T0_DST_SRTMP  : deu_pa = reg_SRTMP;
         T0_DST_MD     : deu_pa = {reg_MD[1], reg_MD[0]};
-        T0_DST_MD0    : deu_pa = reg_MD[0];
-        T0_DST_MD1    : deu_pa = reg_MD[1];
+        T0_DST_MD0    : deu_pa = {8'h00, reg_MD[0]};
+        T0_DST_MD1    : deu_pa = {8'h00, reg_MD[1]};
         T0_DST_A      : deu_pa = {8'h00, reg_A};
         T0_DST_C      : deu_pa = gpr_RDBUS;
         T0_DST_EA     : deu_pa = {reg_EAH, reg_EAL};
@@ -1899,7 +1899,8 @@ always @(*) begin
     if(!deu_muldiv_busy) begin
         casez(mc_t0_deu_op)
             T0_DEU_MOV: begin //move, FA PORT B -> out
-                deu_output = deu_pb;
+                //deu_output = deu_pb;
+                deu_add_op0 = 16'h0000; deu_add_op1 = deu_pb;
             end
             T0_DEU_NEG: begin //negative number, 2's complement of FA PORT A
                 deu_output = deu_add_out;
@@ -1979,10 +1980,12 @@ always @(*) begin
                         deu_add_op0 = deu_pa; deu_add_op1 = ~deu_pb; deu_add_ci = ~flag_C; 
                         deu_add_borrow = 1'b1; end
 
-                    DEU_OP_SK_ANDNZ:
-                        deu_aux_output = deu_pa & deu_pb;
-                    DEU_OP_SK_ORZ:
-                        deu_aux_output = deu_pa | deu_pb;
+                    DEU_OP_SK_ANDNZ: begin
+                        deu_output = deu_pa;
+                        deu_aux_output = deu_pa & deu_pb; end
+                    DEU_OP_SK_ANDZ: begin
+                        deu_output = deu_pa;
+                        deu_aux_output = deu_pa & deu_pb; end
                     DEU_OP_SK_ADDNC: begin
                         deu_output = deu_add_out;
                         deu_add_op0 = deu_pa; deu_add_op1 = deu_pb; deu_add_ci = 1'b0; end
@@ -1991,18 +1994,22 @@ always @(*) begin
                         deu_add_op0 = deu_pa; deu_add_op1 = ~deu_pb; deu_add_ci = 1'b1; 
                         deu_add_borrow = 1'b1; end
                     DEU_OP_SK_NE: begin
+                        deu_output = deu_pa;
                         deu_aux_output = deu_add_out;
                         deu_add_op0 = deu_pa; deu_add_op1 = ~deu_pb; deu_add_ci = 1'b1; 
                         deu_add_borrow = 1'b1; end
                     DEU_OP_SK_EQ: begin
+                        deu_output = deu_pa;
                         deu_aux_output = deu_add_out;
                         deu_add_op0 = deu_pa; deu_add_op1 = ~deu_pb; deu_add_ci = 1'b1; 
                         deu_add_borrow = 1'b1; end
                     DEU_OP_SK_GT: begin 
+                        deu_output = deu_pa;
                         deu_aux_output = deu_add_out; //PA-PB-1, adding the inverted PB without carry has the same effect
                         deu_add_op0 = deu_pa; deu_add_op1 = ~deu_pb; deu_add_ci = 1'b0; 
                         deu_add_borrow = 1'b1; end
                     DEU_OP_SK_LT: begin
+                        deu_output = deu_pa;
                         deu_aux_output = deu_add_out;
                         deu_add_op0 = deu_pa; deu_add_op1 = ~deu_pb; deu_add_ci = 1'b1;
                         deu_add_borrow = 1'b1; end
@@ -2279,7 +2286,7 @@ always @(*) begin
                     DEU_OP_SK_GT    : sk_comb = ~c_comb; //SGT(skip condition: NO BORROW)
                     DEU_OP_SK_LT    : sk_comb =  c_comb; //SLT(skip condition: BORROW)
                     DEU_OP_SK_ANDNZ : sk_comb = ~z_comb; //AND(skip condition: NO ZERO)
-                    DEU_OP_SK_ORZ   : sk_comb =  z_comb; //OR(skip condition: ZERO)
+                    DEU_OP_SK_ANDZ  : sk_comb =  z_comb; //OR(skip condition: ZERO)
                     DEU_OP_SK_NE    : sk_comb = ~z_comb; //SNE(skip condition: NO ZERO)
                     DEU_OP_SK_EQ    : sk_comb =  z_comb; //SEQ(skip condition: ZERO)
                     default: sk_comb = 1'b0;

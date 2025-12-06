@@ -69,6 +69,9 @@ always @(*) begin
         else if((op[7:4] == 4'hA  ||  op[7:4] == 4'hB) &&
                 (op[3:0] == 4'hA))                      sa = EIDI;
         else if( op[7:4] == 4'h0  &&  op[3:0] == 4'h0 ) sa = NOP;
+        else if( op[7:4] == 4'h1  &&  op[3:0] == 4'h1 ) sa = EXX;
+        else if( op[7:4] == 4'h1  &&  op[3:0] == 4'h0 ) sa = EXA;
+        else if( op[7:4] == 4'h5  &&  op[3:0] == 4'h0 ) sa = EXH;
         //else                                            sa = NOP;
     end
     else if(opcode_page == 3'd1) begin

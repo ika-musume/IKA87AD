@@ -15,9 +15,6 @@ module IKA87AD(
     output  wire                o_ALE,
     output  wire                o_RD_n,
     output  wire                o_WR_n,
-    output  wire                o_ALE_OE,   //ALE output driver control(for a CMOS variant, an NMOS one doesn't require this)
-    output  wire                o_RD_n_OE,  //RD_n output driver control(")
-    output  wire                o_WR_n_OE,  //WR_n output driver control(")
 
     //full address and data input/output port
     output  wire    [15:0]      o_A,
@@ -677,18 +674,17 @@ IKA87AD_microcode u_microcode (
         0111: (w) *RPA_OFFSET, rpa2/rpa3 A, B, EA, byte addend select
         1000: (w) RPA
         1001: (w) RPA2
-        1010: (w) BC
-        1011: (w) DE
-        1100: (w) HL
-        1101: (w) SP
-        1110: (w) PC
-        1111: (w) MA
+        1010: (w) EA
+        1011: (w) BC
+        1100: (w) DE
+        1101: (w) HL
+        1110: (w) SP
+        1111: (w) PC
     D[9:6] destination
         1000: (w) RPA
-        1101: (w) MD
-        1110: (w) PC
-        1111: (w) MA
-        
+        1100: (w) MD
+        1110: (w) MA
+        1111: (w) PC 
     D[5:2] ALU operation type:
         0000: bypass
         0001: add
@@ -936,6 +932,8 @@ always_comb begin
             gpr_rw_addr = dec_gpr_rpa(reg_OPCODE[2:0]);
         else if(mc_t1_src == T1_SRC_RPA2)
             gpr_rw_addr = dec_gpr_rpa2(reg_OPCODE[2:0]);
+        else if(mc_t1_src == T1_SRC_EA)
+            gpr_rw_addr = GPRBUS_EA_w;
         else if(mc_t1_src == T1_SRC_BC)
             gpr_rw_addr = GPRBUS_BC_w;
         else if(mc_t1_src == T1_SRC_DE)
@@ -1215,7 +1213,7 @@ logic   [7:0]   reg_MD[0:3]; //memory data
 always_comb reg_MD[3] = 8'h00; //unused address
 
 reg     [15:0]  reg_AUX;        //DEU DIV aux
-reg     [15:0]  reg_ADDR_IM;    //immediate address from the bus
+reg     [15:0]  reg_ADDR_IA;    //immediate address from the bus
 reg     [7:0]   reg_ADDR_WA;    //WA from the bus
 reg     [7:0]   reg_ADDR_RIO;   //rpa immediate offset
 
@@ -1480,7 +1478,7 @@ always @(posedge emuclk) begin
         //reg_MD[0] <= 8'h00;
         //reg_MD[1] <= 8'h00;
         //reg_MD[2] <= 8'h00;
-        //reg_ADDR_IM <= 16'h0000;
+        //reg_ADDR_IA <= 16'h0000;
         //reg_ADDR_WA <= 8'h00;
         //reg_ADDR_SR <= 6'h3F;
     end
@@ -1551,8 +1549,8 @@ always @(posedge emuclk) begin
                 endcase
 
             //immediate address
-            if(addr_ia_we == 2'b11) reg_ADDR_IM[7:0] <= i_DI;
-            else if(addr_ia_we == 2'b01) reg_ADDR_IM[15:8] <= i_DI;
+            if(addr_ia_we == 2'b11) reg_ADDR_IA[7:0] <= i_DI;
+            else if(addr_ia_we == 2'b01) reg_ADDR_IA[15:8] <= i_DI;
 
             //WA address
             if(addr_wa_we) reg_ADDR_WA <= i_DI;
@@ -1587,11 +1585,6 @@ assign o_PD_DO_OE = pd_do_oe; //port D multiplexed addr/data output output enabl
 assign o_DO_OE = do_oe; //data output enable
 assign o_M1_n = ~m1;
 assign o_IO_n = ~io;
-
-//ale/wr/rd pin output enable
-assign o_ALE_OE = i_RESET_n;
-assign o_WR_n_OE = i_RESET_n;
-assign o_RD_n_OE = i_RESET_n;
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
@@ -1726,7 +1719,7 @@ reg     [15:0]  aeu_pa, aeu_pb;
 always @(*) begin
     aeu_pa = 16'h0000; aeu_pb = 16'h0000;
     case(mc_t1_src)
-        T1_SRC_A_IM       : aeu_pb = reg_ADDR_IM;
+        T1_SRC_A_IA       : aeu_pb = reg_ADDR_IA;
         T1_SRC_A_V_WA     : aeu_pb = {reg_V, reg_ADDR_WA};
         T1_SRC_A_TA       : aeu_pb = {8'h00, 2'b10, reg_OPCODE[4:0], 1'b0};
         T1_SRC_A_FA       : aeu_pb = {5'b00001, reg_OPCODE[2:0], reg_MD[0]};
@@ -1736,12 +1729,12 @@ always @(*) begin
         T1_SRC_RPA_OFFSET : aeu_pb = rpa2_offset;
         T1_SRC_RPA        : aeu_pb = gpr_RDBUS;
         T1_SRC_RPA2       : aeu_pb = gpr_RDBUS;
+        T1_SRC_EA         : aeu_pb = gpr_RDBUS;
         T1_SRC_BC         : aeu_pb = gpr_RDBUS;
         T1_SRC_DE         : aeu_pb = gpr_RDBUS;
         T1_SRC_HL         : aeu_pb = gpr_RDBUS;
         T1_SRC_SP         : aeu_pb = gpr_RDBUS;
         T1_SRC_PC         : aeu_pb = reg_PC;
-        T1_SRC_MA         : aeu_pb = reg_MA;
         default           : aeu_pb = 16'h0000;
     endcase
 
@@ -2110,7 +2103,7 @@ always @(*) begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_add_out;
             aeu_add_op0 = aeu_pa; 
-            aeu_add_op1 = 16'hFFFF; //double increment
+            aeu_add_op1 = 16'hFFFF; //decrement
         end
     endcase
 end

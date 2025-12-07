@@ -60,6 +60,7 @@ localparam T0_SRC_MD0       = 4'b1001;
 localparam T0_SRC_AUX       = 4'b1011;
 localparam T0_SRC_A         = 4'b1100;
 localparam T0_SRC_EA        = 4'b1110;
+localparam T0_SRC_IGNORE    = 4'b1110;
 /* -------------------------------- */
 localparam T0_DST_R         = 4'b0000;
 localparam T0_DST_R2        = 4'b0001;
@@ -89,9 +90,9 @@ localparam T0_DEU_DIV       = 4'b1010;
 localparam T0_DEU_COMOP     = 4'b1100;
 /* -------------------------------- */
 localparam DEU_OP_MOV       = 4'h0;
+localparam DEU_OP_XOR       = 4'h1;
 localparam DEU_OP_AND       = 4'h8;
 localparam DEU_OP_OR        = 4'h9;
-localparam DEU_OP_XOR       = 4'h1;
 localparam DEU_OP_ADD       = 4'h4;
 localparam DEU_OP_ADDWC     = 4'h5;
 localparam DEU_OP_SUB       = 4'h6;
@@ -127,7 +128,7 @@ localparam T1_SRC_DE        = 4'b1100;
 localparam T1_SRC_HL        = 4'b1101;
 localparam T1_SRC_SP        = 4'b1110;
 localparam T1_SRC_PC        = 4'b1111;
-localparam T1_SRC_IGNORE    = 4'b1111;
+localparam T1_SRC_IGNORE    = 4'b1010;
 /* -------------------------------- */
 localparam T1_DST_RPA       = 4'b1000;
 localparam T1_DST_MD        = 4'b1100;
@@ -142,6 +143,7 @@ localparam T1_AEU_PUSH      = 4'b0100;
 localparam T1_AEU_POP       = 4'b0101;
 localparam T1_AEU_DINC      = 4'b0110;
 localparam T1_AEU_DEC       = 4'b0111;
+localparam T1_AEU_RA        = 4'b1000;
 
 
 
@@ -168,6 +170,17 @@ localparam T2_SK_SK         = {1'b0, 3'b000, 1'b0, 1'b0, 2'b00, 1'b0, 3'b100};
 localparam T2_SK_SKN        = {1'b0, 3'b000, 1'b0, 1'b0, 2'b00, 1'b0, 3'b101};
 localparam T2_SK_SKNT       = {1'b0, 3'b000, 1'b0, 1'b0, 2'b00, 1'b0, 3'b110};
 localparam T2_SK_SKNIT      = {1'b0, 3'b000, 1'b0, 1'b0, 2'b00, 1'b0, 3'b111};
+
+
+
+///////////////////////////////////////////////////////////
+//////  MICROCODE TYPE 2 COMMANDS
+////
+                            // rsvd  ird   cpd   bralu
+localparam T3_IRD           = {7'd0, 1'b1, 1'b0, 3'b000};
+localparam T3_COND_PC_DEC   = {7'd0, 1'b0, 1'b1, 3'b000};
+localparam T3_BRA_ON_ALU    = {7'd0, 1'b0, 1'b0};
+
 
 
 
@@ -211,8 +224,8 @@ localparam DCX_EA           = 8'd036; // O | 2,  43
 localparam ALUX_A_RPA       = 8'd038; //   | 2, 443
 localparam ALUI_A_IM        = 8'd040; //   | 2,  43
 localparam ALUI_R_IM        = 8'd042; //   | 2, 443
-localparam EALU_EA_R2       = 8'd044; //   | 2, 443
-localparam DALU_EA_RP       = 8'd046; //   | 2, 443
+localparam EALU_EA_R2       = 8'd044; // O | 2, 443
+localparam DALU_EA_RP       = 8'd046; // O | 2, 443
 localparam MUL              = 8'd048; // O | 2, 4433333333
 localparam DIV              = 8'd050; // O | 2, 4433333333_33333333_3
 //4-word segment group
@@ -242,7 +255,7 @@ localparam RLD_RRD          = 8'd136; //   | 4, 44333
 localparam CALB             = 8'd140; //   | 4, 44333
 localparam CALF             = 8'd144; //   | 4,  4333
 localparam RETI             = 8'd148; //   | 4,  4333
-localparam BLOCK            = 8'd152; //   | 4,  4333
+localparam BLOCK            = 8'd152; // O | 4,  4333
 localparam TABLE            = 8'd156; // O | 4, 44333
 //8-word segment group
 localparam LD_RP2_MEM       = 8'd160; // O | 5, 443333, (LBCD, LDED, LHLD, LSPD)
@@ -253,11 +266,11 @@ localparam STEAX_RPA_EA     = 8'd184; // O |V3, 4433
 localparam STEAX_RPA2_EA    = 8'd187; // O | 5, 443333
 localparam INRW             = 8'd192; // O | 5,  43333
 localparam DCRW             = 8'd200; // O | 5,  43333
-localparam CALL             = 8'd208; //   | 5,  43333
+localparam CALL             = 8'd208; // O | 5,  43333
 localparam CALT             = 8'd216; //   |^5,  43333
 localparam RET_RETS         = 8'd116; //   |V3,  433
 localparam SOFTI            = 8'd224; //   | 5,  43333
 localparam HARDI            = 8'd232; //   | 5,  43333
 //opcode with branch microcode
 localparam ALUIW_WA_IM      = 8'd240;
-localparam ALUI_SR2_IM      = 8'd248;
+localparam ALUI_SR2_IM      = 8'd248; // O | 5

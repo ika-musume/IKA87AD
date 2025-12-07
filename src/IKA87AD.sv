@@ -151,14 +151,14 @@ wire            mc_t2_cpu_susp      = mc_ctrl_output[5];
 wire    [2:0]   mc_t2_skip_ctrl     = mc_ctrl_output[4:2];
 
 //MICROCODE TYPE 3 FIELDS
-wire            mc_t3_cond_pc_dec   = mc_ctrl_output[8];
-wire    [2:0]   mc_t3_bra_on_alu    = mc_ctrl_output[6:4];
-wire            mc_t3_swap_md_out   = mc_ctrl_output[3];
-wire            mc_t3_ird           = mc_ctrl_output[2];
+wire            mc_t3_ird           = mc_ctrl_output[6];
+wire            mc_t3_cond_pc_dec   = mc_ctrl_output[5];
+wire    [2:0]   mc_t3_bra_on_alu    = mc_ctrl_output[4:2];
 
 //ALU FIELDS
 wire    [3:0]   arith_code = opcode_page == 3'd0 ? {reg_OPCODE[0], reg_OPCODE[6:4]} : {reg_OPCODE[3], reg_OPCODE[6:4]};
 wire            is_arith_eval_op = arith_code > 4'h9; //is an arithmetic code the evaluation operation like GT, NE, OFF, ON, EQ, NE?
+wire            is_arith_mov     = arith_code == 4'h0;
 wire    [3:0]   shift_code = {reg_OPCODE[7], reg_OPCODE[2], reg_OPCODE[5:4]}; //w_d_tt(word, direction R/L, type)
 
 //END OF INSTRUCTION
@@ -692,6 +692,9 @@ IKA87AD_microcode u_microcode (
         0011: rpa3 increment
         0100: (-A)push operation on the bus: aeu out=A-1, ma out=A-1
         0101: (A+)pop operation on the bus: aeu out=A+1, ma out=A
+        0110: double increment
+        0111: decrement
+        1000: conditional decrement
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -742,12 +745,10 @@ IKA87AD_microcode u_microcode (
     D[17:16]: instruction type bit
     D[15]: FLAG bit
     D[14]: SKIP bit
-    D[13:9]: reserved
-    D[8]: conditional PC decrement(BLOCK)
-    D[7]: reserved
-    D[6:4]: conditional branch on ALU type, branch+ steps
-    D[3]: reserved
-    D[2]: 1st cycle of 2-byte instruction
+    D[13:7]: reserved
+    D[6]: 1st cycle of 2-byte instruction
+    D[5]: conditional PC decrement(BLOCK)
+    D[4:2]: conditional branch on ALU type, branch+ steps
     D[1:0] current bus transaction type :
         00: IDLE
         01: 3-state read
@@ -771,23 +772,23 @@ IKA87AD_microcode u_microcode (
     s = byte select (valid only if the w is 0)
 
     aaa w s
-    000_0_0:   V   V (b) //GPRBUS_xV_b
-    000_0_1:   V   A (b) //GPRBUS_xA_b
+    000_0_0:   0   V (b) //GPRBUS_xV_b
+    000_0_1:   0   A (b) //GPRBUS_xA_b
     000_1_X:   V   A (w) //GPRBUS_VA_w
-    001_0_0:   B   B (b) //GPRBUS_xB_b
-    001_0_1:   B   C (b) //GPRBUS_xC_b
+    001_0_0:   0   B (b) //GPRBUS_xB_b
+    001_0_1:   0   C (b) //GPRBUS_xC_b
     001_1_X:   B   C (w) //GPRBUS_BC_w
-    010_0_0:   D   D (b) //GPRBUS_xD_b
-    010_0_1:   D   E (b) //GPRBUS_xE_b
+    010_0_0:   0   D (b) //GPRBUS_xD_b
+    010_0_1:   0   E (b) //GPRBUS_xE_b
     010_1_X:   D   E (w) //GPRBUS_DE_w
-    011_0_0:   H   H (b) //GPRBUS_xH_b
-    011_0_1:   H   L (b) //GPRBUS_xL_b
+    011_0_0:   0   H (b) //GPRBUS_xH_b
+    011_0_1:   0   L (b) //GPRBUS_xL_b
     011_1_X:   H   L (w) //GPRBUS_HL_w
-    10X_0_0: EAH EAH (b) //GPRBUS_EH_b
-    10X_0_1:   E   A (b) //GPRBUS_EL_b
+    10X_0_0:   0 EAH (b) //GPRBUS_EH_b
+    10X_0_1:   0 EAL (b) //GPRBUS_EL_b
     10X_1_X:   E   A (w) //GPRBUS_EA_w
-    11X_0_0: SPH SPH (b)
-    11X_0_1:   S   P (b)
+    11X_0_0:   0 SPH (b)
+    11X_0_1:   0 SPL (b)
     11X_1_X:   S   P (w) //GPRBUS_SP_w
 */
 
@@ -908,7 +909,7 @@ always_comb begin
         //GPR output can be routed to only one ALU port
         //To avoid hardware interlocks, uCode guarantees there are no collisions
         //Direct DST/SRC assignments to A and EA use separate A/EA read buses
-        if(mc_t0_dst == T0_DST_R || mc_t0_src == T0_SRC_R)
+        unique if(mc_t0_dst == T0_DST_R || mc_t0_src == T0_SRC_R)
             gpr_rw_addr = dec_gpr_r(reg_OPCODE[2:0]);
         else if(mc_t0_dst == T0_DST_R2 || mc_t0_src == T0_SRC_R2)
             gpr_rw_addr = dec_gpr_r2(reg_OPCODE[1:0]);
@@ -924,9 +925,11 @@ always_comb begin
             gpr_rw_addr = GPRBUS_xC_b;
         else if(mc_t0_dst == T0_DST_BC)
             gpr_rw_addr = GPRBUS_BC_w;
+        else
+            gpr_rw_addr = 5'h1F;
     end
     else if(mc_type == MCTYPE1) begin
-        if(mc_t1_src == T1_SRC_RPA_OFFSET)
+        unique if(mc_t1_src == T1_SRC_RPA_OFFSET)
             gpr_rw_addr = dec_gpr_rpa2_offset(reg_OPCODE[1:0]);
         else if(mc_t1_dst == T1_DST_RPA || mc_t1_src == T1_SRC_RPA)
             gpr_rw_addr = dec_gpr_rpa(reg_OPCODE[2:0]);
@@ -942,6 +945,8 @@ always_comb begin
             gpr_rw_addr = GPRBUS_HL_w;
         else if(mc_t1_src == T1_SRC_SP)
             gpr_rw_addr = GPRBUS_SP_w;
+        else
+            gpr_rw_addr = 5'h1F;
     end
 end
 
@@ -1196,13 +1201,14 @@ always @(posedge emuclk) begin
 end
 
 always @(*) begin
-    if(pc_hold) next_pc = reg_PC;
+    if(pc_hold) begin
+        if(mc_type == MCTYPE3 && mc_t3_cond_pc_dec && reg_C != 8'hFF) next_pc = reg_PC - 16'h0001;
+        else next_pc = reg_PC;
+    end
     else begin
         if(force_exec_hardi | force_exec_nop) next_pc = reg_PC;
         else begin
-            if(current_bus_acc == RD4 || current_bus_acc == RD3)
-                if(mc_type == MCTYPE3 && mc_t3_cond_pc_dec) next_pc = reg_PC - 16'h0001;
-                else                  next_pc = reg_PC + 16'h0001;
+            if(current_bus_acc == RD4 || current_bus_acc == RD3) next_pc = reg_PC + 16'h0001;
             else next_pc = reg_PC;
         end
     end
@@ -1328,17 +1334,21 @@ reg     [15:0]  spr_ETM0, spr_ETM1; //undefined after reset, see page 180
 
 reg     [7:0]   spr_CR[0:3];
 
+function automatic logic [7:0] di_masked(input logic [7:0] i, o, oe);
+    int b;
+    for(b=0;b<8;b++) di_masked[b] = oe[b] ? o[b] : i[b];
+endfunction
 
 //temporary special purpose register
 always @(posedge emuclk) if(cycle_tick) begin
     if(reg_SRTMP_wr) reg_SRTMP <= deu_output;
     else
         case(reg_ADDR_SR) 
-            6'h00: reg_SRTMP <= {8'h00, i_PA_I};
-            6'h01: reg_SRTMP <= {8'h00, i_PB_I};
-            6'h02: reg_SRTMP <= {8'h00, i_PC_I};
-            6'h03: reg_SRTMP <= {8'h00, i_PD_I}; 
-            6'h05: reg_SRTMP <= {8'h00, i_PF_I};
+            6'h00: reg_SRTMP <= {8'h00, di_masked(i_PA_I, o_PA_O, o_PA_OE)};
+            6'h01: reg_SRTMP <= {8'h00, di_masked(i_PB_I, o_PB_O, o_PB_OE)};
+            6'h02: reg_SRTMP <= {8'h00, di_masked(i_PC_I, o_PC_O, o_PC_OE)};
+            6'h03: reg_SRTMP <= {8'h00, di_masked(i_PD_I, o_PD_O, o_PD_OE)}; 
+            6'h05: reg_SRTMP <= {8'h00, di_masked(i_PF_I, o_PF_O, o_PF_OE)};
             6'h08: reg_SRTMP <= {8'h00, {3'b000, spr_ANM}};
             //6'h09: reg_SRTMP <= {8'h00, spr_SMH};
             6'h0B: reg_SRTMP <= {8'h00, spr_EOM};
@@ -1348,8 +1358,8 @@ always @(posedge emuclk) if(cycle_tick) begin
             6'h21: reg_SRTMP <= {8'h00, spr_CR[1]};
             6'h22: reg_SRTMP <= {8'h00, spr_CR[2]};
             6'h23: reg_SRTMP <= {8'h00, spr_CR[3]};
-            6'h32: reg_SRTMP <= 16'hDEAD; //ECNT, not yet implemented
-            6'h33: reg_SRTMP <= 16'hBEEF; //ECPT, not yet implemented
+            6'h32: reg_SRTMP <= 16'h0000; //ECNT, not yet implemented
+            6'h33: reg_SRTMP <= 16'h0000; //ECPT, not yet implemented
             default: reg_SRTMP <= 16'h0000;
         endcase
 end
@@ -1514,8 +1524,8 @@ always @(posedge emuclk) begin
                 if(current_bus_acc != WR3) begin
                     //all MD registers are working individually
                     if(reg_MD2_wr) reg_MD[2] <= reg_PSW;
-                    if(reg_MD1_wr) reg_MD[1] <= deu_dsize ? deu_output[15:8] : deu_output[7:0];
-                    if(reg_MD0_wr) reg_MD[0] <= deu_output[7:0];
+                    if(reg_MD1_wr) reg_MD[1] <= gpr_WRBUS[15:8];
+                    if(reg_MD0_wr) reg_MD[0] <= gpr_WRBUS[7:0];
 
                     //give it a priority
                          if(reg_MD2_wr) md_tos <= 2'd3;
@@ -1530,8 +1540,8 @@ always @(posedge emuclk) begin
         else if(md_outlatch_tick) begin
             //all MD registers are working individually
             if(reg_MD2_wr) reg_MD[2] <= reg_PSW;
-            if(reg_MD1_wr) reg_MD[1] <= deu_dsize ? deu_output[15:8] : deu_output[7:0];
-            if(reg_MD0_wr) reg_MD[0] <= deu_output[7:0];
+            if(reg_MD1_wr) reg_MD[1] <= gpr_WRBUS[15:8];
+            if(reg_MD0_wr) reg_MD[0] <= gpr_WRBUS[7:0];
 
             //give it a priority
                  if(reg_MD2_wr) md_tos <= 2'd3;
@@ -2105,6 +2115,12 @@ always @(*) begin
             aeu_add_op0 = aeu_pa; 
             aeu_add_op1 = 16'hFFFF; //decrement
         end
+        T1_AEU_RA: begin //return address
+            aeu_output = aeu_add_out;
+            aeu_ma_output = aeu_add_out;
+            aeu_add_op0 = aeu_pb; 
+            aeu_add_op1 = 16'h0002;
+        end
     endcase
 end
 
@@ -2129,8 +2145,9 @@ always @(*) begin
     z_comb = flag_Z;
     if(mc_type == MCTYPE0) begin
         if(mc_t0_deu_op == T0_DEU_COMOP) begin
-            if(is_arith_eval_op) z_comb = deu_dsize ? deu_aux_output == 16'h0000 : deu_aux_output[7:0] == 8'h00;
-            else                 z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00;
+            unique if(is_arith_eval_op) z_comb = deu_dsize ? deu_aux_output == 16'h0000 : deu_aux_output[7:0] == 8'h00;
+            else if(is_arith_mov)       z_comb = flag_Z;
+            else                        z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00;
         end
         else if(mc_t0_deu_op == T0_DEU_DAA) z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00;
         else if(mc_t0_deu_op == T0_DEU_INC) z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00;
@@ -2279,7 +2296,7 @@ always @(*) begin
                     DEU_OP_SK_GT    : sk_comb = ~c_comb; //SGT(skip condition: NO BORROW)
                     DEU_OP_SK_LT    : sk_comb =  c_comb; //SLT(skip condition: BORROW)
                     DEU_OP_SK_ANDNZ : sk_comb = ~z_comb; //AND(skip condition: NO ZERO)
-                    DEU_OP_SK_ANDZ  : sk_comb =  z_comb; //OR(skip condition: ZERO)
+                    DEU_OP_SK_ANDZ  : sk_comb =  z_comb; //AND(skip condition: ZERO)
                     DEU_OP_SK_NE    : sk_comb = ~z_comb; //SNE(skip condition: NO ZERO)
                     DEU_OP_SK_EQ    : sk_comb =  z_comb; //SEQ(skip condition: ZERO)
                     default: sk_comb = 1'b0;

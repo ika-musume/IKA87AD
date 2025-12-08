@@ -77,8 +77,8 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         EXA             : mc <= {MCTYPE2, 1'b0, 1'b1, T2_XCHG_EXA, RD4};                                //exa mod, RD4
         EXH             : mc <= {MCTYPE2, 1'b0, 1'b1, T2_XCHG_EXH, RD4};                                //exh mod, RD4
         
-        BLOCK           : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_HL, T1_DST_MA, T1_AEU_POP, RD3};           //MA<-pop HL, RD3
-        BLOCK+1         : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_DE, T1_DST_MA, T1_AEU_POP, WR3};           //MA<-pop DE, WR3
+        BLOCK           : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_HL, T1_DST_MA, T1_AEU_PINC, RD3};          //MA<-HL+, RD3
+        BLOCK+1         : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_DE, T1_DST_MA, T1_AEU_PINC, WR3};          //MA<-DE+, WR3
         BLOCK+2         : mc <= {MCTYPE0, 1'b0, 1'b0, T0_SRC_IGNORE, T0_DST_C, T0_DEU_DEC, IDLE};       //C<-C-1(dec), IDLE
         BLOCK+3         : mc <= {MCTYPE3, 1'b0, 1'b0, T3_COND_PC_DEC, RD4};                             //conditional PC decrement, RD4
 
@@ -136,11 +136,11 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
 
         PUSH            : mc <= {MCTYPE0, 1'b0, 1'b1, T0_SRC_RP1, T0_DST_MD, T0_DEU_MOV, IDLE};         //MD<-rp1, IDLE
         PUSH+1          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
-        PUSH+2          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
+        PUSH+2          : mc <= {MCTYPE2, 1'b0, 1'b0, T2_NOP, WR3};                                     //nop, WR3
         PUSH+3          : mc <= {MCTYPE2, 1'b0, 1'b0, T2_NOP, RD4};                                     //nop, RD4
 
         POP             : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_SP, T1_DST_MA, T1_AEU_POP, RD3};           //MA<-pop SP, RD3
-        POP+1           : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_POP, RD3};           //MA<-pop SP, RD3
+        POP+1           : mc <= {MCTYPE2, 1'b0, 1'b0, T2_NOP, RD3};                                     //nop, RD3
         POP+2           : mc <= {MCTYPE0, 1'b0, 1'b0, T0_SRC_MD, T0_DST_RP1, T0_DEU_MOV, RD4};          //rp1<-MD, RD4
 
         TABLE           : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_RPA_OFFSET, T1_DST_MA, T1_AEU_ADD, IDLE};  //MA<-MA+A(rpa offset A, opcode[1:0]==00), IDLE
@@ -278,25 +278,26 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         JEA             : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_EA, T1_DST_PC, T1_AEU_MOV, RD4};           //PC<-EA, RD4
 
         CALL            : mc <= {MCTYPE2, 1'b0, 1'b0, T2_ST_IA, RD3};                                   //STIA, RD3
-        CALL+1          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_PC, T1_DST_MD, T1_AEU_RA, RD3};            //MD<-PC+2, RD3
+        CALL+1          : mc <= {MCTYPE2, 1'b0, 1'b0, T2_NOP, RD3};                                     //nop, RD3
         CALL+2          : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
-        CALL+3          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
+        CALL+3          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_PC, T1_DST_MD, T1_AEU_MOV, WR3};           //MD<-PC, WR3
         CALL+4          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_A_IA, T1_DST_PC, T1_AEU_MOV, RD4};         //PC<-IA
 
-        //CALB            : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1000, IDLE};                 //MA<--SP, IDLE
-        //CALB+1          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, WR3};   //nop, WR3
-        //CALB+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
-        //CALB+3          : mc <= {MCTYPE1, 1'b0, 1'b0, SD_BC, SC_DST_PC, 4'b0000, RD4};                  //PC<-BC, RD4
+        //CALB            : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_PC, T1_DST_MD, T1_AEU_RA, IDLE};           //MD<-PC+2, IDLE
+        //CALB+1          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
+        //CALB+2          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
+        //CALB+3          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_BC, T1_DST_PC, T1_AEU_MOV, RD4};           //PC<-BC
 
-        //CALF            : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10000, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, RD3};   //nop, RD3
-        //CALF+1          : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1000, WR3};                  //MA<--SP, WR3
-        //CALF+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
-        //CALF+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADDR_FA, SA_DST_PC, 2'b00, RD4};               //PC<-fa, RD4
+        //CALF            : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_PC, T1_DST_MD, T1_AEU_RA, RD3};            //MD<-PC+2, RD3
+        //CALF+1          : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
+        //CALF+2          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
+        //CALF+3          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_A_FA, T1_DST_PC, T1_AEU_MOV, RD4};         //PC<-ADDR_FA
 
-        //CALT            : mc <= {MCTYPE3, 1'b0, 1'b1, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop*2, IDLE
-        //CALT+1          : mc <= {MCTYPE1, 1'b0, 1'b0, SD_SP, SC_DST_MA, 4'b1000, WR3};                  //MA<--SP, WR3
-        //CALT+2          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
-        //CALT+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADDR_TA, SA_DST_PC, 2'b00, RD4};               //PC<-ta, RD4
+        //CALT            : mc <= {MCTYPE1, 1'b0, 1'b1, T1_SRC_PC, T1_DST_MD, T1_AEU_RA, RD3};            //MD<-PC+2, RD3
+        //CALT+1          : mc <= {MCTYPE3, 1'b0, 1'b0, 5'b10001, 1'b0, 1'b0, 3'b000, 1'b0, 1'b0, IDLE};  //nop*2, IDLE
+        //CALT+2          : mc <= {MCTYPE1, 1'b0, 1'b0, SD_SP, SC_DST_MA, 4'b1000, WR3};                  //MA<--SP, WR3
+        //CALT+3          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_SUB1, SA_DST_SP, 2'b01, WR3};                  //SP<-SP-1, WR3
+        //CALT+4          : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADDR_TA, SA_DST_PC, 2'b00, RD4};               //PC<-ta, RD4
 
         //RET_RETS        : mc <= {MCTYPE1, 1'b0, 1'b1, SD_SP, SC_DST_MA, 4'b1001, RD3};                  //MA<-SP+, RD3
         //RET_RETS+1      : mc <= {MCTYPE0, 1'b0, 1'b0, SB_ADD1, SA_DST_SP, 2'b01, RD3};                  //SP<-SP+1, RD3

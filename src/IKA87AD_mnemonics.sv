@@ -1,3 +1,8 @@
+localparam MA = 2'd3;
+localparam SP = 2'd2;
+localparam PC = 2'd0;
+
+
 ///////////////////////////////////////////////////////////
 //////  BUS CYCLE TYPES
 ////
@@ -135,15 +140,15 @@ localparam T1_DST_MD        = 4'b1100;
 localparam T1_DST_MA        = 4'b1110;
 localparam T1_DST_PC        = 4'b1111;
 /* -------------------------------- */
-localparam T1_AEU_MOV       = 4'b0000;
-localparam T1_AEU_ADD       = 4'b0001;
-localparam T1_AEU_RPA_ADJ   = 4'b0010;
-localparam T1_AEU_RPA3_ADJ  = 4'b0011;
-localparam T1_AEU_PUSH      = 4'b0100;
+localparam T1_AEU_ADD       = 4'b0000;
+localparam T1_AEU_RPA_ADJ   = 4'b0001;
+localparam T1_AEU_RPA3_ADJ  = 4'b0010;
+localparam T1_AEU_PINC      = 4'b0011;
+localparam T1_AEU_DINC      = 4'b0100;
 localparam T1_AEU_POP       = 4'b0101;
-localparam T1_AEU_DINC      = 4'b0110;
+localparam T1_AEU_PUSH      = 4'b0110;
 localparam T1_AEU_DEC       = 4'b0111;
-localparam T1_AEU_RA        = 4'b1000;
+localparam T1_AEU_MOV       = 4'b1000;
 
 
 

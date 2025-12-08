@@ -958,6 +958,7 @@ end
 
 //GPR write: write enables
 logic           is_dst_gpr;  //when one of the GPR is selected as a destination...
+logic           is_pinc;     //when the current AEU command is post-increment...
 logic           is_push_pop; //when AEU is running push/pop operation...
 always_comb begin
     is_dst_gpr = 1'b0;
@@ -972,34 +973,35 @@ always_comb begin
             is_dst_gpr = 1'b1;
     end
 
-    is_push_pop = mc_type == MCTYPE1 && (mc_t1_aeu_op == T1_AEU_PUSH || mc_t1_aeu_op == T1_AEU_POP);
+    is_pinc = mc_type == MCTYPE1 && (mc_t1_aeu_op == T1_AEU_PINC);
+    is_push_pop = mc_type == MCTYPE1 && mc_t1_src == T1_SRC_SP && (mc_t1_aeu_op == T1_AEU_PUSH || mc_t1_aeu_op == T1_AEU_POP);
 end
 
 //general purpose registers
-wire            reg_V_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_VA_w || gpr_rw_addr == GPRBUS_xV_b));
+wire            reg_V_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_VA_w || gpr_rw_addr == GPRBUS_xV_b));
 
-wire            reg_B_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_BC_w || gpr_rw_addr == GPRBUS_xB_b)) ||
-                              (is_push_pop &&  gpr_rw_addr == GPRBUS_BC_w);
-wire            reg_C_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_BC_w || gpr_rw_addr == GPRBUS_xC_b)) ||
-                              (is_push_pop &&  gpr_rw_addr == GPRBUS_BC_w);
-wire            reg_D_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_DE_w || gpr_rw_addr == GPRBUS_xD_b)) ||
-                              (is_push_pop &&  gpr_rw_addr == GPRBUS_DE_w);
-wire            reg_E_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_DE_w || gpr_rw_addr == GPRBUS_xE_b)) ||
-                              (is_push_pop &&  gpr_rw_addr == GPRBUS_DE_w);
-wire            reg_H_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_HL_w || gpr_rw_addr == GPRBUS_xH_b)) ||
-                              (is_push_pop &&  gpr_rw_addr == GPRBUS_HL_w);
-wire            reg_L_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_HL_w || gpr_rw_addr == GPRBUS_xL_b)) ||
-                              (is_push_pop &&  gpr_rw_addr == GPRBUS_HL_w);
+wire            reg_B_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_BC_w || gpr_rw_addr == GPRBUS_xB_b)) ||
+                              (is_pinc    &&  gpr_rw_addr == GPRBUS_BC_w);
+wire            reg_C_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_BC_w || gpr_rw_addr == GPRBUS_xC_b)) ||
+                              (is_pinc    &&  gpr_rw_addr == GPRBUS_BC_w);
+wire            reg_D_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_DE_w || gpr_rw_addr == GPRBUS_xD_b)) ||
+                              (is_pinc    &&  gpr_rw_addr == GPRBUS_DE_w);
+wire            reg_E_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_DE_w || gpr_rw_addr == GPRBUS_xE_b)) ||
+                              (is_pinc    &&  gpr_rw_addr == GPRBUS_DE_w);
+wire            reg_H_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_HL_w || gpr_rw_addr == GPRBUS_xH_b)) ||
+                              (is_pinc    &&  gpr_rw_addr == GPRBUS_HL_w);
+wire            reg_L_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_HL_w || gpr_rw_addr == GPRBUS_xL_b)) ||
+                              (is_pinc    &&  gpr_rw_addr == GPRBUS_HL_w);
 
 //special cases(including accumulators)
 reg             deu_muldiv_ea_wr;
 
-wire            reg_A_wr    = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_VA_w || gpr_rw_addr == GPRBUS_xA_b)) ||
+wire            reg_A_wr    = (is_dst_gpr && (gpr_rw_addr == GPRBUS_VA_w || gpr_rw_addr == GPRBUS_xA_b)) ||
                               (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_A);
-wire            reg_EAL_wr  = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_EA_w || gpr_rw_addr == GPRBUS_EL_b)) ||
+wire            reg_EAL_wr  = (is_dst_gpr && (gpr_rw_addr == GPRBUS_EA_w || gpr_rw_addr == GPRBUS_EL_b)) ||
                               (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_EA) ||
                                deu_muldiv_ea_wr;
-wire            reg_EAH_wr  = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_EA_w || gpr_rw_addr == GPRBUS_EH_b)) ||
+wire            reg_EAH_wr  = (is_dst_gpr && (gpr_rw_addr == GPRBUS_EA_w || gpr_rw_addr == GPRBUS_EH_b)) ||
                               (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_EA) ||
                                deu_muldiv_ea_wr;
 wire            reg_SP_wr   = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_SP_w)) ||
@@ -1138,15 +1140,13 @@ wire    [7:0]   reg_L = regpair_L[sel_HL];
 
 //PC, SP, MA registers with auto increment/decrement feature
 reg     [15:0]  reg_PC, reg_SP, reg_MA;
-reg             pc_hold;
+reg             pc_hold, sp_autocnt;
 reg     [15:0]  next_pc;
 assign  spurious_irq_addr = reg_PC;
 
 //address source selector
-localparam  MA = 1'b1;
-localparam  PC = 1'b0;
-reg             ao_src;
-wire    [15:0]  ao = ao_src ? reg_MA : reg_PC;
+reg     [1:0]   ao_src;
+wire    [15:0]  ao = ao_src[1] ? (ao_src[0] ? reg_MA : reg_SP) : reg_PC;
 
 //this block defines the operation of the PC/MA registers
 always @(posedge emuclk) begin
@@ -1154,16 +1154,19 @@ always @(posedge emuclk) begin
     if(!mrst_n) begin
         ao_src <= PC;
         pc_hold <= 1'b0;
+        sp_autocnt <= 1'b0;
     end
     else begin if(cycle_tick) begin
         if(mc_end_of_instruction) begin
             ao_src <= PC;
             pc_hold <= 1'b0;
+            sp_autocnt <= 1'b0;
         end
         else begin
             if(reg_MA_wr) begin
-                ao_src <= MA; //select MA
+                ao_src <= (is_push_pop) ? SP : MA;
                 pc_hold <= 1'b1;
+                sp_autocnt <= is_push_pop;
             end
             else if(mc_next_bus_acc == IDLE) pc_hold <= 1'b1;
         end end
@@ -1183,6 +1186,13 @@ always @(posedge emuclk) begin
 
             //Stack Pointer load condition
             if(reg_SP_wr) reg_SP <= mc_type == MCTYPE1 ? aeu_output : deu_output;
+            else begin
+                if(sp_autocnt) begin
+                    unique if(current_bus_acc == RD3) reg_SP <= reg_SP + 16'h0001;
+                      else if(mc_next_bus_acc == WR3) reg_SP <= reg_SP - 16'h0001;
+                      else                            reg_SP <= reg_SP;
+                end
+            end
 
             //Memory Address load/auto inc conditions
             if(reg_MA_wr) reg_MA <= aeu_ma_output;
@@ -1347,7 +1357,7 @@ always @(posedge emuclk) if(cycle_tick) begin
             6'h00: reg_SRTMP <= {8'h00, di_masked(i_PA_I, o_PA_O, o_PA_OE)};
             6'h01: reg_SRTMP <= {8'h00, di_masked(i_PB_I, o_PB_O, o_PB_OE)};
             6'h02: reg_SRTMP <= {8'h00, di_masked(i_PC_I, o_PC_O, o_PC_OE)};
-            6'h03: reg_SRTMP <= {8'h00, di_masked(i_PD_I, o_PD_O, o_PD_OE)}; 
+            6'h03: reg_SRTMP <= {8'h00, di_masked(i_PD_I, o_PD_O, {8{o_PD_OE}})}; 
             6'h05: reg_SRTMP <= {8'h00, di_masked(i_PF_I, o_PF_O, o_PF_OE)};
             6'h08: reg_SRTMP <= {8'h00, {3'b000, spr_ANM}};
             //6'h09: reg_SRTMP <= {8'h00, spr_SMH};
@@ -2057,17 +2067,7 @@ always @(*) begin
         PORT A = SRC1/DST
         PORT B = SRC2
     */
-
-    //maintain current destination register's data, if the port is not altered
-    aeu_output = aeu_add_out;
-    aeu_ma_output = aeu_add_out;
-    aeu_add_op0 = aeu_pa; aeu_add_op1 = 16'd0; //FA inputs
-    
     casez(mc_t1_aeu_op)
-        T1_AEU_MOV: begin //move, FA PORT B -> out
-            aeu_output = aeu_pb;
-            aeu_ma_output = aeu_pb;
-        end
         T1_AEU_ADD: begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_add_out;
@@ -2093,15 +2093,11 @@ always @(*) begin
                 default: aeu_add_op1 = 16'h0000;
             endcase
         end
-        T1_AEU_PUSH: begin
-            aeu_output = aeu_add_out;
-            aeu_ma_output = aeu_add_out;
-            aeu_add_op0 = 16'hFFFF; aeu_add_op1 = aeu_pb;
-        end
-        T1_AEU_POP: begin
+        T1_AEU_PINC: begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_pb;
-            aeu_add_op0 = 16'h0001; aeu_add_op1 = aeu_pb;
+            aeu_add_op0 = aeu_pb;
+            aeu_add_op1 = 16'h0001; //post-increment
         end 
         T1_AEU_DINC: begin
             aeu_output = aeu_add_out;
@@ -2115,11 +2111,15 @@ always @(*) begin
             aeu_add_op0 = aeu_pa; 
             aeu_add_op1 = 16'hFFFF; //decrement
         end
-        T1_AEU_RA: begin //return address
+        T1_AEU_PUSH: begin
             aeu_output = aeu_add_out;
             aeu_ma_output = aeu_add_out;
             aeu_add_op0 = aeu_pb; 
-            aeu_add_op1 = 16'h0002;
+            aeu_add_op1 = 16'hFFFF; //decrement
+        end
+        T1_AEU_POP, T1_AEU_MOV, 4'b1???: begin //move, FA PORT B -> out
+            aeu_output = aeu_pb;
+            aeu_ma_output = aeu_pb;
         end
     endcase
 end

@@ -83,15 +83,21 @@ assign dbus = (cpu_addr == 16'h6978) ? 8'h77 : 8'hZZ;
 assign dbus = (cpu_addr == 16'h4F2F) ? 8'h00 : 8'hZZ;
 assign dbus = (cpu_addr == 16'h4F30) ? 8'h02 : 8'hZZ;
 
+assign dbus = (cpu_addr == 16'h0060) ? 8'h62 : 8'hZZ;
+
 assign dbus = (cpu_addr == 16'h0080) ? 8'h00 : 8'hZZ;
 assign dbus = (cpu_addr == 16'h0081) ? 8'h30 : 8'hZZ;
+
+assign dbus = (cpu_addr == 16'hdeaa) ? 8'h32 : 8'hZZ;
+assign dbus = (cpu_addr == 16'hdeab) ? 8'h00 : 8'hZZ;
+assign dbus = (cpu_addr == 16'hdeac) ? 8'h48 : 8'hZZ;
 
 
 
 //test memory section
 reg     [7:0]   testmem[0:511];
 wire    [8:0]   testmem_addr = cpu_addr[8:0];
-wire            testmem_cs = cpu_addr < 16'h0080;
+wire            testmem_cs = cpu_addr < 16'h0060;
 wire            testmem_rd = ~cpu_rd_n;
 reg     [7:0]   testmem_dout;
 initial $readmemh("IKA87AD_testmem.txt", testmem);

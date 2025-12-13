@@ -1008,8 +1008,7 @@ wire            reg_SP_wr   = (is_dst_gpr  && (gpr_rw_addr == GPRBUS_SP_w)) ||
                               (is_push_pop &&  gpr_rw_addr == GPRBUS_SP_w);
 
 //PC write
-wire            reg_PC_wr   = (mc_type == MCTYPE1 && mc_t1_dst == T1_DST_PC) ||
-                              (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_PSW);
+wire            reg_PC_wr   = (mc_type == MCTYPE1 && mc_t1_dst == T1_DST_PC);
 
 //special register write
 wire            reg_SRTMP_wr= (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_SRTMP);
@@ -1046,7 +1045,6 @@ wire            deu_div_start = mc_type == MCTYPE0 && mc_t0_deu_op == T0_DEU_DIV
 wire            deu_dsize  = (is_dst_gpr && (gpr_rw_addr[1])) || //word/byte select
                              (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_EA)  ||
                              (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_MD)  ||
-                             (mc_type == MCTYPE0 && mc_t0_dst == T0_DST_PSW) ||
                              deu_muldiv_ea_wr;
 
 //AEU output
@@ -1685,7 +1683,7 @@ always @(*) begin
         T0_SRC_MD0    : deu_pb = {8'h00, reg_MD[0]};
         T0_SRC_A      : deu_pb = {8'h00, reg_A};
         T0_SRC_EA     : deu_pb = {reg_EAH, reg_EAL};
-        T0_SRC_AUX    : deu_pb = reg_DAUX;
+        T0_SRC_DAUX    : deu_pb = reg_DAUX;
         default       : deu_pb = 16'h0000;
     endcase
 
@@ -1736,7 +1734,6 @@ always @(*) begin
         T1_SRC_RPA_OFFSET : aeu_pb = rpa2_offset;
         T1_SRC_RPA        : aeu_pb = gpr_RDBUS;
         T1_SRC_RPA2       : aeu_pb = gpr_RDBUS;
-        T1_SRC_MD         : aeu_pb = {reg_MD[1], reg_MD[0]};
         T1_SRC_EA         : aeu_pb = gpr_RDBUS;
         T1_SRC_BC         : aeu_pb = gpr_RDBUS;
         T1_SRC_DE         : aeu_pb = gpr_RDBUS;
@@ -1917,6 +1914,7 @@ always @(*) begin
                 deu_add_borrow = 1'b1;
             end
             T0_DEU_ROT: begin //digit roatation
+                /*                                RRD                                  RLD */
                 deu_output     = reg_OPCODE[0] ? {8'h00, deu_pb[3:0], deu_pa[7:4]} : {8'h00, deu_pa[3:0], deu_pb[3:0]}; //to MD
                 deu_aux_output = reg_OPCODE[0] ? {8'h00, deu_pb[7:4], deu_pa[3:0]} : {8'h00, deu_pb[7:4], deu_pa[7:4]}; //to TEMP->A
                 deu_rot_aux_wr = 1'b1;
@@ -2303,11 +2301,11 @@ always @(*) begin
         end
         else if(mc_type == MCTYPE2)
             case(mc_t2_skip_ctrl)
-                3'b011 : sk_comb =  reg_MD[0][reg_OPCODE[2:0]]; //BTST_WA
-                3'b100 : sk_comb =  skip_flag;   //SK
-                3'b101 : sk_comb = ~skip_flag;   //SKN
-                3'b110 : sk_comb =  iflag_muxed; //SKIT
-                3'b111 : sk_comb = ~iflag_muxed; //SKNIT
+                T2_SKIP_BTST  : sk_comb =  reg_MD[0][reg_OPCODE[2:0]]; //BTST_WA
+                T2_SKIP_SK    : sk_comb =  skip_flag;   //SK
+                T2_SKIP_SKN   : sk_comb = ~skip_flag;   //SKN
+                T2_SKIP_SKIT  : sk_comb =  iflag_muxed; //SKIT
+                T2_SKIP_SKNIT : sk_comb = ~iflag_muxed; //SKNIT
                 default: sk_comb = 1'b0;
             endcase
     end
@@ -2339,7 +2337,7 @@ end
 //L1 flag, MVI A
 //L0 flag, MVI L, LXI HL
 wire            flag_l1_set_cond =  opcode_page == 3'd0 && reg_OPCODE == 8'h69;    //MVI A
-wire            flag_l0_set_cond = (opcode_page == 3'd0 && reg_OPCODE == 8'h6F) || //MVI F
+wire            flag_l0_set_cond = (opcode_page == 3'd0 && reg_OPCODE == 8'h6F) || //MVI L
                                    (opcode_page == 3'd0 && reg_OPCODE == 8'h34);   //LXI HL
 always @(posedge emuclk) begin
     if(!mrst_n) begin
@@ -2349,14 +2347,24 @@ always @(posedge emuclk) begin
     else begin if(mcrom_read_tick) begin
         if(reg_PSW_wr) flag_L1 <= gpr_WRBUS[3];
         else begin
-            if(!flag_l1_set_cond) flag_L1 <= 1'b0;
-            else if(mc_alter_flag) flag_L1 <= 1'b1;
+            if(!flag_l1_set_cond) begin
+                if(softi_proc_cyc || hardi_proc_cyc) flag_L1 <= flag_L1;
+                else flag_L1 <= 1'b0;
+            end
+            else begin
+                if(mc_alter_flag) flag_L1 <= 1'b1;
+            end
         end
 
         if(reg_PSW_wr) flag_L0 <= gpr_WRBUS[2];
         else begin
-            if(!flag_l0_set_cond) flag_L0 <= 1'b0;
-            else if(mc_alter_flag) flag_L0 <= 1'b1;
+            if(!flag_l0_set_cond) begin
+                if(softi_proc_cyc || hardi_proc_cyc) flag_L0 <= flag_L0;
+                else flag_L0 <= 1'b0;
+            end
+            else begin
+                if(mc_alter_flag) flag_L0 <= 1'b1;
+            end
         end
     end end
 end

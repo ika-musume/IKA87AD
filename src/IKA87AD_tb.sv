@@ -61,7 +61,7 @@ wire    [7:0]   cpu_do;
 tri     [7:0]   dbus;
 assign dbus = (cpu_addr == 16'hFFF0) ? 8'hAD : 8'hZZ;
 assign dbus = (cpu_addr == 16'hFFF1) ? 8'hDE : 8'hZZ;
-assign dbus = (cpu_addr == 16'hFFF2) ? 8'hEF : 8'hZZ;
+assign dbus = (cpu_addr == 16'hFFF2) ? 8'h05 : 8'hZZ;
 assign dbus = (cpu_addr == 16'hFFF3) ? 8'hBE : 8'hZZ;
 assign dbus = (cpu_addr == 16'hFFF4) ? 8'h74 : 8'hZZ;
 assign dbus = (cpu_addr == 16'hFFF5) ? 8'h69 : 8'hZZ;
@@ -70,24 +70,28 @@ assign dbus = (cpu_addr == 16'hFFF7) ? 8'h4E : 8'hZZ;
 
 assign dbus = (cpu_addr == 16'h6974) ? 8'hEE : 8'hZZ;
 assign dbus = (cpu_addr == 16'h6975) ? 8'hEE : 8'hZZ;
-assign dbus = (cpu_addr == 16'h4E71) ? 8'hCC : 8'hZZ;
-assign dbus = (cpu_addr == 16'h4E72) ? 8'hCC : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E71) ? 8'h00 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E72) ? 8'h22 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E73) ? 8'h44 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E74) ? 8'h66 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E75) ? 8'h88 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E76) ? 8'hAA : 8'hZZ;
+assign dbus = (cpu_addr == 16'h4E77) ? 8'h23 : 8'hZZ;
 
 assign dbus = (cpu_addr == 16'h6977) ? 8'h77 : 8'hZZ;
 assign dbus = (cpu_addr == 16'h6978) ? 8'h77 : 8'hZZ;
-assign dbus = (cpu_addr == 16'h4E73) ? 8'h44 : 8'hZZ;
-assign dbus = (cpu_addr == 16'h4E74) ? 8'h44 : 8'hZZ;
 assign dbus = (cpu_addr == 16'h4F2F) ? 8'h00 : 8'hZZ;
 assign dbus = (cpu_addr == 16'h4F30) ? 8'h02 : 8'hZZ;
-assign dbus = (cpu_addr == 16'h4E76) ? 8'h01 : 8'hZZ;
-assign dbus = (cpu_addr == 16'h4E77) ? 8'h23 : 8'hZZ;
+
+assign dbus = (cpu_addr == 16'h0080) ? 8'h00 : 8'hZZ;
+assign dbus = (cpu_addr == 16'h0081) ? 8'h30 : 8'hZZ;
 
 
 
 //test memory section
 reg     [7:0]   testmem[0:511];
 wire    [8:0]   testmem_addr = cpu_addr[8:0];
-wire            testmem_cs = cpu_addr < 16'h0100;
+wire            testmem_cs = cpu_addr < 16'h0080;
 wire            testmem_rd = ~cpu_rd_n;
 reg     [7:0]   testmem_dout;
 initial $readmemh("IKA87AD_testmem.txt", testmem);
@@ -151,9 +155,6 @@ IKA87AD u_dut (
     .o_ALE                          (                           ),
     .o_RD_n                         (cpu_rd_n                   ),
     .o_WR_n                         (cpu_wr_n                   ),
-    .o_ALE_OE                       (                           ),
-    .o_RD_n_OE                      (                           ),
-    .o_WR_n_OE                      (                           ),
 
     .o_A                            (cpu_addr                   ),
     .i_DI                           (dbus                       ),

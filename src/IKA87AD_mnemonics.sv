@@ -116,17 +116,16 @@ localparam DEU_OP_SK_LT     = 4'hB;
 ///////////////////////////////////////////////////////////
 //////  MICROCODE TYPE 1 FIELDS
 ////
-
-localparam T1_SRC_A_IA      = 4'b0000;
-localparam T1_SRC_A_V_WA    = 4'b0001;
-localparam T1_SRC_A_TA      = 4'b0010;
-localparam T1_SRC_A_FA      = 4'b0011;
-localparam T1_SRC_A_REL_S   = 4'b0100;
-localparam T1_SRC_A_REL_L   = 4'b0101;
-localparam T1_SRC_A_INT     = 4'b0110;
-localparam T1_SRC_RPA_OFFSET= 4'b0111;
-localparam T1_SRC_RPA       = 4'b1000;
-localparam T1_SRC_RPA2      = 4'b1001;
+localparam T1_SRC_A_TA      = 4'b0000;
+localparam T1_SRC_A_FA      = 4'b0001;
+localparam T1_SRC_A_REL_S   = 4'b0010;
+localparam T1_SRC_A_REL_L   = 4'b0011;
+localparam T1_SRC_A_INT     = 4'b0100;
+localparam T1_SRC_AAUX      = 4'b0101;
+localparam T1_SRC_RPA_OFFSET= 4'b0110;
+localparam T1_SRC_RPA       = 4'b0111;
+localparam T1_SRC_RPA2      = 4'b1000;
+localparam T1_SRC_MD        = 4'b1001;
 localparam T1_SRC_EA        = 4'b1010;
 localparam T1_SRC_BC        = 4'b1011;
 localparam T1_SRC_DE        = 4'b1100;
@@ -135,9 +134,9 @@ localparam T1_SRC_SP        = 4'b1110;
 localparam T1_SRC_PC        = 4'b1111;
 localparam T1_SRC_IGNORE    = 4'b1010;
 /* -------------------------------- */
-localparam T1_DST_RPA       = 4'b1000;
-localparam T1_DST_MD        = 4'b1100;
-localparam T1_DST_MA        = 4'b1110;
+localparam T1_DST_RPA       = 4'b0111;
+localparam T1_DST_MD        = 4'b1001;
+localparam T1_DST_MA        = 4'b1010;
 localparam T1_DST_PC        = 4'b1111;
 /* -------------------------------- */
 localparam T1_AEU_ADD       = 4'b0000;
@@ -155,15 +154,21 @@ localparam T1_AEU_MOV       = 4'b1000;
 ///////////////////////////////////////////////////////////
 //////  MICROCODE TYPE 2 COMMANDS
 ////
+
+localparam T2_ATYPE_BYTE    = 3'b001;
+localparam T2_ATYPE_WORD    = 3'b010;
+localparam T2_ATYPE_IRO     = 3'b011;
+localparam T2_ATYPE_SR      = 3'b100;
+
                             // rsvd   atsel  cmod   irq   xchg  susp  skctrl
 localparam T2_NOP           = {1'b0, 3'b000, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
-localparam T2_ST_IA         = {1'b0, 3'b001, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
-localparam T2_ST_WA         = {1'b0, 3'b010, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
-localparam T2_ST_RIO        = {1'b0, 3'b011, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
-localparam T2_ST_SR         = {1'b0, 3'b100, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
-localparam T2_ST_SR2        = {1'b0, 3'b101, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
-localparam T2_ST_SR3        = {1'b0, 3'b110, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
-localparam T2_ST_SR4        = {1'b0, 3'b111, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
+localparam T2_STA_BYTE      = {1'b0, 3'b001, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
+localparam T2_STA_WORD      = {1'b0, 3'b010, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
+localparam T2_STA_IRO       = {1'b0, 3'b011, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
+localparam T2_STA_SR        = {1'b0, 3'b100, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
+localparam T2_STA_SR2       = {1'b0, 3'b101, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
+localparam T2_STA_SR3       = {1'b0, 3'b110, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
+localparam T2_STA_SR4       = {1'b0, 3'b111, 1'b0, 1'b0, 2'b00, 1'b0, 3'b000};
 localparam T2_CARRY_MOD     = {1'b0, 3'b000, 1'b1, 1'b0, 2'b00, 1'b0, 3'b000};
 localparam T2_IRQ_MOD       = {1'b0, 3'b000, 1'b0, 1'b1, 2'b00, 1'b0, 3'b000};
 localparam T2_XCHG_EXX      = {1'b0, 3'b000, 1'b0, 1'b0, 2'b01, 1'b0, 3'b000};

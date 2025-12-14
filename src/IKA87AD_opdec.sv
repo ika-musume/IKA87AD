@@ -81,10 +81,10 @@ always @(*) begin
         else if( op[7:4] == 4'h3  &&  op[3:1] == 3'h4 ) sa = RLD_RRD;
         else if( op[7:4] == 4'h2  &&  op[3:0] == 4'h9 ) sa = CALB;
         else if( op[7:4] == 4'h9  &&
-                (op[3:0] >  4'h1  &&  op[3:0] <  4'h6)) sa = STEAX_RPA_EA;
+                (op[3:0] >  4'h1  &&  op[3:0] <  4'h6)) sa = STEAX_RPA3_EA;
         else if( op[7:4] == 4'h9  &&  op[3:0] >  4'hA ) sa = STEAX_RPA2_EA;
         else if( op[7:4] == 4'h8  &&
-                (op[3:0] >  4'h1  &&  op[3:0] <  4'h6)) sa = LDEAX_EA_RPA;
+                (op[3:0] >  4'h1  &&  op[3:0] <  4'h6)) sa = LDEAX_EA_RPA3;
         else if( op[7:4] == 4'h8  &&  op[3:0] >  4'hA ) sa = LDEAX_EA_RPA2;
         else if( op[7:4] == 4'h2  &&  op[3:0] >  4'hB ) sa = MUL;
         else if( op[7:4] == 4'h3  &&  op[3:0] >  4'hB ) sa = DIV;

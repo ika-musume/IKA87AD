@@ -1432,7 +1432,7 @@ assign o_REG_MCC = spr_MCC;
 
 //multiplexed addr/data selector
 reg             addr_data_sel;
-assign o_AnD_SEL = addr_data_sel;
+assign o_D_nA_SEL = addr_data_sel;
 always @(posedge emuclk) begin
     if(!mrst_n) addr_data_sel <= 1'b0; //reset
     else begin

@@ -104,11 +104,3 @@ always @(posedge i_EMUCLK) begin
 end
 
 endmodule
-
-class IKA87AD_tsio #(parameter W = 8);
-    static function [W-1:0] port_input (input [W-1:0] port_outlatch, input [W-1:0] ext_data, input [W-1:0] port_dir);
-        for(int i = 0; i < W; i++) begin
-            port_input[i] = port_dir[i] ? port_outlatch[i] : ext_data[i];
-        end
-    endfunction
-endclass

@@ -1,3 +1,5 @@
+package IKA87AD_mnemonics;
+
 localparam MA = 2'd3;
 localparam SP = 2'd2;
 localparam PC = 2'd0;
@@ -289,3 +291,5 @@ localparam HARDI            = 8'd232; // O | 5,  43333
 //opcode with branch microcode
 localparam ALUIW_WA_IM      = 8'd240; // O | 8
 localparam ALUI_SR2_IM      = 8'd248; // O | 5
+
+endpackage : IKA87AD_mnemonics

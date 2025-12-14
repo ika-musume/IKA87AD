@@ -1,5 +1,3 @@
-`include "IKA87AD_mnemonics.sv"
-
 module IKA87AD_opdec (
     input   wire    [7:0]       i_OPCODE,
     input   wire    [2:0]       i_OPCODE_PAGE,
@@ -7,16 +5,18 @@ module IKA87AD_opdec (
     output  wire    [7:0]       o_MCROM_SA
 );
 
+import IKA87AD_mnemonics::*;
+
 wire    [2:0]   opcode_page = i_OPCODE_PAGE;
 wire    [7:0]   op = i_OPCODE; //alias signal
 reg     [7:0]   sa; //microcode rom start address
 assign  o_MCROM_SA = sa;
 
-always @(*) begin
+always_comb begin
     sa = NOP;
 
     if(opcode_page == 3'd0) begin
-        unique if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) sa = IRD;
+             if(op == 8'h48 || op == 8'h60 || op == 8'h64 || op == 8'h70 || op == 8'h74) sa = IRD;
         else if( op[7:4] == 4'h6  &&  op[3:0] >  4'h7 ) sa = MVI_R_IM;
         else if( op[7:4] == 4'h3  &&  op[3:0] >  4'h8 ) sa = STAX_RPA_A;
         else if( op[7:4] == 4'h2  &&  op[3:0] >  4'h8 ) sa = LDAX_A_RPA;

@@ -909,7 +909,8 @@ always_comb begin
         //GPR output can be routed to only one ALU port
         //To avoid hardware interlocks, uCode guarantees there are no collisions
         //Direct DST/SRC assignments to A and EA use separate A/EA read buses
-        unique if(mc_t0_dst == T0_DST_R || mc_t0_src == T0_SRC_R)
+        //unique if
+             if(mc_t0_dst == T0_DST_R || mc_t0_src == T0_SRC_R)
             gpr_rw_addr = dec_gpr_r(reg_OPCODE[2:0]);
         else if(mc_t0_dst == T0_DST_R2 || mc_t0_src == T0_SRC_R2)
             gpr_rw_addr = dec_gpr_r2(reg_OPCODE[1:0]);
@@ -929,7 +930,8 @@ always_comb begin
             gpr_rw_addr = 5'h1F;
     end
     else if(mc_type == MCTYPE1) begin
-        unique if(mc_t1_src == T1_SRC_RPA_OFFSET)
+        //unique if
+             if(mc_t1_src == T1_SRC_RPA_OFFSET)
             gpr_rw_addr = dec_gpr_rpa2_offset(reg_OPCODE[1:0]);
         else if(mc_t1_dst == T1_DST_RPA || mc_t1_src == T1_SRC_RPA)
             gpr_rw_addr = dec_gpr_rpa(reg_OPCODE[2:0]);
@@ -1185,7 +1187,8 @@ always @(posedge emuclk) begin
             if(reg_SP_wr) reg_SP <= mc_type == MCTYPE1 ? aeu_output : deu_output;
             else begin
                 if(sp_autocnt) begin
-                    unique if(current_bus_acc == RD3) reg_SP <= reg_SP + 16'h0001;
+                    //unique if
+                           if(current_bus_acc == RD3) reg_SP <= reg_SP + 16'h0001;
                       else if(mc_next_bus_acc == WR3) reg_SP <= reg_SP - 16'h0001;
                       else                            reg_SP <= reg_SP;
                 end
@@ -1478,26 +1481,27 @@ reg     [2:0]   aaux_we; //immediate address latching sequence
 reg     [1:0]   spr_atype; //special register address type
 
 //continuous assignment
-always @(*) aaux_we[1] = mc_type == MCTYPE2 && mc_t2_atype_sel == T2_ATYPE_WORD;
+always @(*) aaux_we[0] = mc_type == MCTYPE2 && mc_t2_atype_sel == T2_ATYPE_WORD;
 
 always @(posedge emuclk) begin
     if(!mrst_n) begin
         md_tos <= 2'd0;
-        aaux_we <= 3'b00;
+        aaux_we[2:1] <= 2'b00;
         spr_atype <= 2'b00;
     end
     else begin
-        unique if(cycle_tick) begin
+        //unique if
+        if(cycle_tick) begin
             if(mc_end_of_instruction) begin
                 md_tos <= 2'd0;
-                aaux_we <= 3'b00;
+                aaux_we[2:1] <= 2'b00;
             end
             else begin
                 //poke aaux at every microcode cycle
-                aaux_we[2] <= (mc_type == MCTYPE2 && mc_t2_atype_sel == T2_ATYPE_BYTE) ||
+                aaux_we[1] <= (mc_type == MCTYPE2 && mc_t2_atype_sel == T2_ATYPE_BYTE) ||
                               (mc_type == MCTYPE2 && mc_t2_atype_sel == T2_ATYPE_IRO) ||
                               (mc_type == MCTYPE2 && mc_t2_atype_sel == T2_ATYPE_SR);
-                aaux_we[0] <= aaux_we[1];
+                aaux_we[2] <= aaux_we[0];
 
                 //update special purpose register address decode type
                 if(mc_type == MCTYPE2 && mc_t2_atype_sel >= T2_ATYPE_SR) spr_atype <= mc_t2_atype_sel[1:0];
@@ -1536,9 +1540,9 @@ always @(posedge emuclk) begin
                 endcase
             else
                 case(aaux_we)
-                    3'b100:  begin reg_AAUX[7:0] <= i_DI; reg_AAUX[15:8] <= reg_V; end
+                    3'b001:  begin reg_AAUX[7:0] <= i_DI; reg_AAUX[15:8] <= reg_V; end
                     3'b010:  begin reg_AAUX[7:0] <= i_DI; reg_AAUX[15:8] <= reg_V; end
-                    3'b001:  begin                        reg_AAUX[15:8] <= i_DI;  end
+                    3'b100:  begin                        reg_AAUX[15:8] <= i_DI;  end
                     default: begin reg_AAUX <= reg_AAUX; end
                 endcase
         end
@@ -1702,11 +1706,11 @@ reg     [15:0]   rpa2_offset;
 always @(*) begin
     //rpa2 addend select
     case(reg_OPCODE[2:0])
-        3'b011: rpa2_offset = {8'h00, reg_AAUX};
+        3'b011: rpa2_offset = {8'h00, reg_AAUX[7:0]};
         3'b100: rpa2_offset = gpr_RDBUS;
         3'b101: rpa2_offset = gpr_RDBUS;
         3'b110: rpa2_offset = gpr_RDBUS;
-        3'b111: rpa2_offset = {8'h00, reg_AAUX};
+        3'b111: rpa2_offset = {8'h00, reg_AAUX[7:0]};
         default: rpa2_offset =  gpr_RDBUS; //not specified
     endcase
 end
@@ -1766,6 +1770,8 @@ wire            deu_add_wco = deu_add_wa[16];
 reg     [15:0]  deu_sh_out;
 reg             deu_sh_out_co;
 always @(*) begin
+    deu_sh_out = 16'h0000;
+    
     casez(shift_code)
         //4'b0000: begin  deu_sh_out[7:0] = {1'b0, deu_pa[7:1]};   //SLRC, skip condition: CARRY
         //                deu_sh_out_co   = deu_pa[0]; end
@@ -1814,7 +1820,8 @@ always @(posedge emuclk) begin
     end
     else begin if(cycle_tick) begin
         if(deu_muldiv_cntr == 5'd31) begin
-            unique if(deu_mul_start) begin
+            //unique if
+            if(deu_mul_start) begin
                 deu_muldiv_cntr <= 5'd16;
                 deu_muldiv_busy <= 1'b1;
             end
@@ -1936,7 +1943,7 @@ always @(*) begin
                 deu_mul_aux_wr = 1'b1;
                 deu_aux_output = {8'h00, reg_A};
             end
-            T0_DEU_DIV, 4'b010?: begin
+            T0_DEU_DIV, 4'b101?: begin
                 {deu_aux_output, deu_output} = deu_div_next;
                 deu_add_op0 = deu_div_op0; //reg EA
                 deu_add_op1 = deu_div_op1; //-r2
@@ -2043,6 +2050,9 @@ always @(*) begin
         PORT A = SRC1/DST
         PORT B = SRC2
     */
+
+    aeu_add_op0 = aeu_pa; aeu_add_op1 = aeu_pb;
+
     casez(mc_t1_aeu_op)
         T1_AEU_ADD: begin
             aeu_output = aeu_add_out;
@@ -2122,7 +2132,8 @@ always @(*) begin
     z_comb = flag_Z;
     if(mc_type == MCTYPE0) begin
         if(mc_t0_deu_op == T0_DEU_COMOP) begin
-            unique if(is_arith_eval_op) z_comb = deu_dsize ? deu_aux_output == 16'h0000 : deu_aux_output[7:0] == 8'h00;
+            //unique if
+                 if(is_arith_eval_op)   z_comb = deu_dsize ? deu_aux_output == 16'h0000 : deu_aux_output[7:0] == 8'h00;
             else if(is_arith_mov)       z_comb = flag_Z;
             else                        z_comb = deu_dsize ? deu_output == 16'h0000 : deu_output[7:0] == 8'h00;
         end
@@ -2379,8 +2390,9 @@ always_comb begin
             mc_ctrl_output = {MCTYPE2, 1'b0, 1'b0, T2_NOP, mcrom_data[1:0]};
     end
     else begin
+        //unique if
         //stop the microsequencer during mul/div calculation
-        unique if(deu_muldiv_busy) 
+        if(deu_muldiv_busy) 
             mc_ctrl_output = {MCTYPE2, 1'b0, 1'b0, T2_NOP, IDLE};
 
         //next bus access; assert RD3 when the operation mode is RPA2/3, DE/HL+byte

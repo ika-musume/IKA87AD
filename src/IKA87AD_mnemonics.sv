@@ -89,10 +89,10 @@ localparam T0_DEU_INC       = 4'b0010;
 localparam T0_DEU_DEC       = 4'b0011;
 localparam T0_DEU_ROT       = 4'b0100;
 localparam T0_DEU_SHFT      = 4'b0101;
-localparam T0_DEU_DAA       = 4'b0110;
-localparam T0_DEU_MUL       = 4'b1000;
-localparam T0_DEU_DIV       = 4'b1010;
-localparam T0_DEU_COMOP     = 4'b1100;
+localparam T0_DEU_DAA       = 4'b0110; //011?
+localparam T0_DEU_MUL       = 4'b1000; //100?
+localparam T0_DEU_DIV       = 4'b1010; //101?
+localparam T0_DEU_COMOP     = 4'b1100; //11??
 /* -------------------------------- */
 localparam DEU_OP_MOV       = 4'h0;
 localparam DEU_OP_XOR       = 4'h1;
@@ -283,7 +283,7 @@ localparam INRW             = 8'd192; // O | 5,  43333
 localparam DCRW             = 8'd200; // O | 5,  43333
 localparam CALL             = 8'd208; // O | 5,  43333
 localparam CALT             = 8'd216; // O |^5,  43333
-localparam RET_RETS         = 8'd116; // O |V3,  433
+localparam RET_RETS         = 8'd221; // O |V3,  433
 localparam SOFTI            = 8'd224; // O | 5,  43333
 localparam HARDI            = 8'd232; // O | 5,  43333
 //opcode with branch microcode

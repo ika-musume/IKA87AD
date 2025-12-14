@@ -299,8 +299,8 @@ always @(posedge i_CLK) if(i_MCROM_READ_TICK) begin
         CALL+4          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_AAUX, T1_DST_PC, T1_AEU_MOV, RD4};         //PC<-AAUX, RD4
 
         CALB+0          : mc <= {MCTYPE2, 1'b0, 1'b1, T2_NOP, IDLE};                                    //nop, IDLE
-        CALL+1          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
-        CALL+2          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_PC, T1_DST_MD, T1_AEU_MOV, WR3};           //MD<-PC, WR3
+        CALB+1          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_SP, T1_DST_MA, T1_AEU_PUSH, WR3};          //MA<-push SP, WR3
+        CALB+2          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_PC, T1_DST_MD, T1_AEU_MOV, WR3};           //MD<-PC, WR3
         CALB+3          : mc <= {MCTYPE1, 1'b0, 1'b0, T1_SRC_BC, T1_DST_PC, T1_AEU_MOV, RD4};           //PC<-BC, RD4
 
         CALF+0          : mc <= {MCTYPE2, 1'b0, 1'b0, T2_STA_BYTE, RD3};                                //STA_BYTE, RD3
